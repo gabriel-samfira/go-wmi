@@ -1,0 +1,201 @@
+package wmi
+
+import (
+	"fmt"
+	// "os"
+	"strings"
+
+	"github.com/mattn/go-ole"
+	"github.com/mattn/go-ole/oleutil"
+)
+
+type WMIQueryType string
+type SetParams interface{}
+
+var (
+	Equals WMIQueryType = "="
+	Like   WMIQueryType = " Like "
+)
+
+type WMI struct {
+	rawSvc     *ole.VARIANT
+	unknown    *ole.IUnknown
+	wmi        *ole.IDispatch
+	qInterface *ole.IDispatch
+
+	params []interface{}
+}
+
+type WMIResult struct {
+	res    *ole.IDispatch
+	rawRes *ole.VARIANT
+}
+
+type WMIQuery interface{}
+
+type WMIBaseQuery struct {
+	Key   string
+	Value interface{}
+	Type  WMIQueryType
+}
+
+type WMIAndQuery WMIBaseQuery
+type WMIOrQuery WMIBaseQuery
+
+func (r *WMIResult) Raw() *ole.IDispatch {
+	return r.res
+}
+
+func (r *WMIResult) ItemAtIndex(i int) (*WMIResult, error) {
+	if r.res == nil {
+		return nil, fmt.Errorf("Object not found")
+	}
+	itemRaw, err := oleutil.CallMethod(r.res, "ItemIndex", i)
+	if err != nil {
+		return nil, err
+	}
+	item := itemRaw.ToIDispatch()
+	wmiRes := &WMIResult{
+		res:    item,
+		rawRes: itemRaw,
+	}
+	return wmiRes, nil
+}
+
+func (r *WMIResult) Get(property string) (*WMIResult, error) {
+	if r.res == nil {
+		return nil, fmt.Errorf("Object not found")
+	}
+	rawVal, err := oleutil.GetProperty(r.res, property)
+	if err != nil {
+		return nil, err
+	}
+	val := rawVal.ToIDispatch()
+	wmiRes := &WMIResult{
+		res:    val,
+		rawRes: rawVal,
+	}
+	return wmiRes, nil
+}
+
+func (r *WMIResult) Set(property string, params SetParams) error {
+	_, err = oleutil.PutProperty(r.res, property, params...)
+	return err
+}
+
+func (r *WMIResult) Value() interface{} {
+	if r == nil || r.rawRes == nil {
+		return ""
+	}
+	return r.rawRes.Value()
+}
+
+func (r *WMIResult) Release() {
+	r.res.Release()
+}
+
+func (r *WMIResult) Count() (int, error) {
+	countVar, err := oleutil.GetProperty(r.res, "Count")
+	if err != nil {
+		return 0, err
+	}
+	return int(countVar.Val), nil
+}
+
+func NewConnection(params ...interface{}) (*WMI, error) {
+	ole.CoInitialize(0)
+	unknown, err := oleutil.CreateObject("WbemScripting.SWbemLocator")
+	if err != nil {
+		return nil, err
+	}
+	qInterface, err := unknown.QueryInterface(ole.IID_IDispatch)
+	if err != nil {
+		return nil, err
+	}
+	rawSvc, err := oleutil.CallMethod(qInterface, "ConnectServer", params...)
+	if err != nil {
+		return nil, err
+	}
+	wmi := rawSvc.ToIDispatch()
+	w := &WMI{
+		rawSvc:     rawSvc,
+		unknown:    unknown,
+		qInterface: qInterface,
+		wmi:        wmi,
+		params:     params,
+	}
+	return w, nil
+}
+
+func (w *WMI) Close() {
+	w.wmi.Release()
+	w.qInterface.Release()
+	w.unknown.Release()
+	ole.CoUninitialize()
+}
+
+func (w *WMI) sanitizeValue(val interface{}) (string, error) {
+	switch v := val.(type) {
+	case int, string, bool, float32, float64:
+		return fmt.Sprintf("%v", v), nil
+	default:
+		return "", fmt.Errorf("Invalid field value")
+	}
+}
+
+func (w *WMI) getQueryParams(qParams []WMIQuery) (string, error) {
+	if len(qParams) == 0 {
+		return "", nil
+	}
+	ret := "WHERE"
+	for _, q := range qParams {
+		var mod string
+		var pair string
+		switch v := q.(type) {
+		case WMIAndQuery:
+			val, err := w.sanitizeValue(v.Value)
+			if err != nil {
+				return "", err
+			}
+			mod = "and"
+			pair = fmt.Sprintf("%s%s'%s'", v.Key, v.Type, val)
+		case WMIOrQuery:
+			val, err := w.sanitizeValue(v.Value)
+			if err != nil {
+				return "", err
+			}
+			mod = "or"
+			pair = fmt.Sprintf("%s%s'%s'", v.Key, v.Type, val)
+		}
+		if strings.HasSuffix(ret, "WHERE") {
+			ret += fmt.Sprintf(" %s", pair)
+		} else {
+			ret += fmt.Sprintf(" %s %s", mod, pair)
+		}
+	}
+	return ret, nil
+}
+
+func (w *WMI) Gwmi(resource string, fields []string, qParams []WMIQuery) (*WMIResult, error) {
+	n := "*"
+	if len(fields) > 0 {
+		n = strings.Join(fields, ",")
+	}
+	qStr, err := w.getQueryParams(qParams)
+	if err != nil {
+		return nil, err
+	}
+	// result is a SWBemObjectSet
+	q := fmt.Sprintf("SELECT %s FROM %s %s", n, resource, qStr)
+	fmt.Println(q)
+	resultRaw, err := oleutil.CallMethod(w.wmi, "ExecQuery", q)
+	if err != nil {
+		return nil, err
+	}
+	res := resultRaw.ToIDispatch()
+	wmiRes := &WMIResult{
+		res:    res,
+		rawRes: resultRaw,
+	}
+	return wmiRes, nil
+}
