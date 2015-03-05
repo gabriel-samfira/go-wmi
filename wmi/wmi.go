@@ -2,7 +2,6 @@ package wmi
 
 import (
 	"fmt"
-	// "os"
 	"strings"
 
 	"github.com/mattn/go-ole"
@@ -62,7 +61,7 @@ func (r *WMIResult) ItemAtIndex(i int) (*WMIResult, error) {
 	return wmiRes, nil
 }
 
-func (r *WMIResult) Get(property string) (*WMIResult, error) {
+func (r *WMIResult) GetProperty(property string) (*WMIResult, error) {
 	if r.res == nil {
 		return nil, fmt.Errorf("Object not found")
 	}
@@ -78,8 +77,21 @@ func (r *WMIResult) Get(property string) (*WMIResult, error) {
 	return wmiRes, nil
 }
 
-func (r *WMIResult) Set(property string, params SetParams) error {
-	_, err = oleutil.PutProperty(r.res, property, params...)
+func (r *WMIResult) Get(method string, params ...interface{}) (*WMIResult, error) {
+	rawSvc, err := oleutil.CallMethod(r.res, method, params...)
+	if err != nil {
+		return nil, err
+	}
+	svc := rawSvc.ToIDispatch()
+	wmiRes := &WMIResult{
+		res:    svc,
+		rawRes: rawSvc,
+	}
+	return wmiRes, nil
+}
+
+func (r *WMIResult) Set(property string, params ...interface{}) error {
+	_, err := oleutil.PutProperty(r.res, property, params...)
 	return err
 }
 
@@ -176,6 +188,15 @@ func (w *WMI) getQueryParams(qParams []WMIQuery) (string, error) {
 	return ret, nil
 }
 
+func (w *WMI) Get(params ...interface{}) (*ole.IDispatch, error) {
+	rawSvc, err := oleutil.CallMethod(w.wmi, "Get", params...)
+	if err != nil {
+		return nil, err
+	}
+	svc := rawSvc.ToIDispatch()
+	return svc, nil
+}
+
 func (w *WMI) Gwmi(resource string, fields []string, qParams []WMIQuery) (*WMIResult, error) {
 	n := "*"
 	if len(fields) > 0 {
@@ -198,4 +219,23 @@ func (w *WMI) Gwmi(resource string, fields []string, qParams []WMIQuery) (*WMIRe
 		rawRes: resultRaw,
 	}
 	return wmiRes, nil
+}
+
+func (w *WMI) GetOne(resource string, fields []string, qParams []WMIQuery) (*WMIResult, error) {
+	res, err := w.Gwmi(resource, fields, qParams)
+	if err != nil {
+		return nil, err
+	}
+	c, err := res.Count()
+	if err != nil {
+		return nil, err
+	}
+	if c == 0 {
+		return nil, fmt.Errorf("Querie returned empty set")
+	}
+	item, err := res.ItemAtIndex(0)
+	if err != nil {
+		return nil, err
+	}
+	return item, nil
 }
