@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mattn/go-ole"
-	"github.com/mattn/go-ole/oleutil"
+	"github.com/go-ole/go-ole"
+	"github.com/go-ole/go-ole/oleutil"
 )
 
 type WMIQueryType string
@@ -90,9 +90,33 @@ func (r *WMIResult) Get(method string, params ...interface{}) (*WMIResult, error
 	return wmiRes, nil
 }
 
+func (r *WMIResult) Path() (string, error) {
+	p, err := r.GetProperty("path_")
+	if err != nil {
+		return "", err
+	}
+	path, err := p.GetProperty("Path")
+	if err != nil {
+		return "", err
+	}
+	val := path.Value()
+	if val == nil {
+		return "", fmt.Errorf("Failed to get Path_")
+	}
+	return val.(string), nil
+}
+
 func (r *WMIResult) Set(property string, params ...interface{}) error {
 	_, err := oleutil.PutProperty(r.res, property, params...)
 	return err
+}
+
+func (r *WMIResult) GetText(i int) (string, error) {
+	t, err := oleutil.CallMethod(r.res, "GetText_", i)
+	if err != nil {
+		return "", err
+	}
+	return t.ToString(), nil
 }
 
 func (r *WMIResult) Value() interface{} {
@@ -188,13 +212,30 @@ func (w *WMI) getQueryParams(qParams []WMIQuery) (string, error) {
 	return ret, nil
 }
 
-func (w *WMI) Get(params ...interface{}) (*ole.IDispatch, error) {
+func (w *WMI) Get(params ...interface{}) (*WMIResult, error) {
 	rawSvc, err := oleutil.CallMethod(w.wmi, "Get", params...)
 	if err != nil {
 		return nil, err
 	}
 	svc := rawSvc.ToIDispatch()
-	return svc, nil
+	ret := &WMIResult{
+		res:    svc,
+		rawRes: rawSvc,
+	}
+	return ret, nil
+}
+
+func (w *WMI) ExecMethod(params ...interface{}) (*WMIResult, error) {
+	rawSvc, err := oleutil.CallMethod(w.wmi, "ExecMethod", params...)
+	if err != nil {
+		return nil, err
+	}
+	svc := rawSvc.ToIDispatch()
+	ret := &WMIResult{
+		res:    svc,
+		rawRes: rawSvc,
+	}
+	return ret, nil
 }
 
 func (w *WMI) Gwmi(resource string, fields []string, qParams []WMIQuery) (*WMIResult, error) {
@@ -208,7 +249,6 @@ func (w *WMI) Gwmi(resource string, fields []string, qParams []WMIQuery) (*WMIRe
 	}
 	// result is a SWBemObjectSet
 	q := fmt.Sprintf("SELECT %s FROM %s %s", n, resource, qStr)
-	fmt.Println(q)
 	resultRaw, err := oleutil.CallMethod(w.wmi, "ExecQuery", q)
 	if err != nil {
 		return nil, err
