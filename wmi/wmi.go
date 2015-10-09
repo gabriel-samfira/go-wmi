@@ -22,6 +22,9 @@ type WMI struct {
 	wmi        *ole.IDispatch
 	qInterface *ole.IDispatch
 
+	Namespace string
+	Server    string
+
 	params []interface{}
 }
 
@@ -30,16 +33,66 @@ type WMIResult struct {
 	rawRes *ole.VARIANT
 }
 
-type WMIQuery interface{}
+type WMIQuery interface {
+	AsString(partialQuery string) (string, error)
+}
 
-type WMIBaseQuery struct {
+type QueryFields struct {
 	Key   string
 	Value interface{}
 	Type  WMIQueryType
 }
 
-type WMIAndQuery WMIBaseQuery
-type WMIOrQuery WMIBaseQuery
+func (w *QueryFields) sanitizeValue(val interface{}) (string, error) {
+	switch v := val.(type) {
+	case int, string, bool, float32, float64:
+		return fmt.Sprintf("%v", v), nil
+	default:
+		return "", fmt.Errorf("Invalid field value")
+	}
+}
+
+func (w *QueryFields) validateFields() error {
+	if w.Key == "" || w.Type == "" {
+		return fmt.Errorf("Invalid parameters (key: %v, Type: %v, Value: %v", w.Key, w.Type, w.Value)
+	}
+	return nil
+}
+
+func (w *QueryFields) buildQuery(partialQuery, cond string) (string, error) {
+	if err := w.validateFields(); err != nil {
+		return "", err
+	}
+	v, err := w.sanitizeValue(w.Value)
+	if err != nil {
+		return "", err
+	}
+	if partialQuery == "" {
+		partialQuery += "WHERE"
+	}
+	if strings.HasSuffix(partialQuery, "WHERE") {
+		partialQuery += fmt.Sprintf(" %s%s'%s'", w.Key, w.Type, v)
+	} else {
+		partialQuery += fmt.Sprintf(" %s %s%s'%s'", cond, w.Key, w.Type, v)
+	}
+	return partialQuery, nil
+}
+
+type WMIAndQuery struct {
+	QueryFields
+}
+
+func (w *WMIAndQuery) AsString(partialQuery string) (string, error) {
+	return w.buildQuery(partialQuery, "AND")
+}
+
+type WMIOrQuery struct {
+	QueryFields
+}
+
+func (w *WMIOrQuery) AsString(partialQuery string) (string, error) {
+	return w.buildQuery(partialQuery, "OR")
+}
 
 func (r *WMIResult) Raw() *ole.IDispatch {
 	return r.res
@@ -138,8 +191,20 @@ func (r *WMIResult) Count() (int, error) {
 	return int(countVar.Val), nil
 }
 
+func NewWMIObject(path string) (*WMIResult, error) {
+	return nil, nil
+}
+
 func NewConnection(params ...interface{}) (*WMI, error) {
-	ole.CoInitialize(0)
+	err := ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED)
+	if err != nil {
+		oleerr := err.(*ole.OleError)
+		// CoInitialize already called
+		// https://msdn.microsoft.com/en-us/library/windows/desktop/ms695279%28v=vs.85%29.aspx
+		if oleerr.Code() != ole.S_OK && oleerr.Code() != 0x00000001 {
+			return nil, err
+		}
+	}
 	unknown, err := oleutil.CreateObject("WbemScripting.SWbemLocator")
 	if err != nil {
 		return nil, err
@@ -170,43 +235,16 @@ func (w *WMI) Close() {
 	ole.CoUninitialize()
 }
 
-func (w *WMI) sanitizeValue(val interface{}) (string, error) {
-	switch v := val.(type) {
-	case int, string, bool, float32, float64:
-		return fmt.Sprintf("%v", v), nil
-	default:
-		return "", fmt.Errorf("Invalid field value")
-	}
-}
-
 func (w *WMI) getQueryParams(qParams []WMIQuery) (string, error) {
 	if len(qParams) == 0 {
 		return "", nil
 	}
-	ret := "WHERE"
+	var ret string
+	var err error
 	for _, q := range qParams {
-		var mod string
-		var pair string
-		switch v := q.(type) {
-		case WMIAndQuery:
-			val, err := w.sanitizeValue(v.Value)
-			if err != nil {
-				return "", err
-			}
-			mod = "and"
-			pair = fmt.Sprintf("%s%s'%s'", v.Key, v.Type, val)
-		case WMIOrQuery:
-			val, err := w.sanitizeValue(v.Value)
-			if err != nil {
-				return "", err
-			}
-			mod = "or"
-			pair = fmt.Sprintf("%s%s'%s'", v.Key, v.Type, val)
-		}
-		if strings.HasSuffix(ret, "WHERE") {
-			ret += fmt.Sprintf(" %s", pair)
-		} else {
-			ret += fmt.Sprintf(" %s %s", mod, pair)
+		ret, err = q.AsString(ret)
+		if err != nil {
+			return "", err
 		}
 	}
 	return ret, nil
@@ -249,6 +287,7 @@ func (w *WMI) Gwmi(resource string, fields []string, qParams []WMIQuery) (*WMIRe
 	}
 	// result is a SWBemObjectSet
 	q := fmt.Sprintf("SELECT %s FROM %s %s", n, resource, qStr)
+	fmt.Println(q)
 	resultRaw, err := oleutil.CallMethod(w.wmi, "ExecQuery", q)
 	if err != nil {
 		return nil, err
@@ -271,7 +310,7 @@ func (w *WMI) GetOne(resource string, fields []string, qParams []WMIQuery) (*WMI
 		return nil, err
 	}
 	if c == 0 {
-		return nil, fmt.Errorf("Querie returned empty set")
+		return nil, NotFoundError
 	}
 	item, err := res.ItemAtIndex(0)
 	if err != nil {
