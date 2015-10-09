@@ -5,7 +5,9 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"time"
 
+	// "github.com/go-ole/go-ole"
 	// "github.com/go-ole/go-ole/oleutil"
 
 	// "github.com/gabriel-samfira/go-wmi/wmi"
@@ -95,13 +97,12 @@ func NewPathParser(path string) (*PathParser, error) {
 	}, nil
 }
 
-// JobState represents a WMI job that was run. This class exposes a subset
+// JobState represents a WMI job that was run. This type exposes a subset
 // of the information available in CIM_ConcreteJob
 // https://msdn.microsoft.com/en-us/library/cc136808%28v=vs.85%29.aspx
 type JobState struct {
 	Name             string
 	Description      string
-	DetailedStatus   string
 	ElementName      string
 	ErrorCode        int
 	ErrorDescription string
@@ -112,9 +113,10 @@ type JobState struct {
 	JobType          int
 }
 
-func populateJobData(j *WMIResult) (JobState, error) {
-	job := &JobState{}
-	valuePtr := reflect.ValueOf(job)
+// populateStruct only works for types that define fields of type string or int.
+// it will populate the go type with values found in WMIResult
+func populateStruct(j *WMIResult, s interface{}) error {
+	valuePtr := reflect.ValueOf(s)
 	v := reflect.Indirect(valuePtr)
 
 	for i := 0; i < v.NumField(); i++ {
@@ -124,7 +126,7 @@ func populateJobData(j *WMIResult) (JobState, error) {
 		res, err := j.GetProperty(name)
 
 		if err != nil {
-			return JobState{}, err
+			return err
 		}
 		jobFieldValue := res.Value()
 		if jobFieldValue == nil {
@@ -133,19 +135,19 @@ func populateJobData(j *WMIResult) (JobState, error) {
 		switch kind {
 		case reflect.Int:
 			if v, ok := jobFieldValue.(int32); !ok {
-				return JobState{}, fmt.Errorf("Invalid return value for %s: %T", name, jobFieldValue)
+				return fmt.Errorf("Invalid return value for %s: %T", name, jobFieldValue)
 			} else {
 				field.SetInt(int64(v))
 			}
 		case reflect.String:
 			if v, ok := jobFieldValue.(string); !ok {
-				return JobState{}, fmt.Errorf("Invalid return value for %s: %T", name, jobFieldValue)
+				return fmt.Errorf("Invalid return value for %s: %T", name, jobFieldValue)
 			} else {
 				field.SetString(v)
 			}
 		}
 	}
-	return *job, nil
+	return nil
 }
 
 func NewJobState(path string) (JobState, error) {
@@ -153,20 +155,30 @@ func NewJobState(path string) (JobState, error) {
 	if err != nil {
 		return JobState{}, err
 	}
-	if strings.HasSuffix(connectData.Class, "_ConcreteJob") == false {
-		return JobState{}, fmt.Errorf("Path is not a valid CIM_ConcreteJob. Got: %s", connectData.Class)
-	}
 	w, err := NewConnection(connectData.Server, connectData.Namespace)
 	if err != nil {
 		return JobState{}, err
 	}
 	defer w.Close()
+	// This may blow up. In theory, both CIM_ConcreteJob and Msvm_Concrete job will
+	// work with this. Also, anything that inherits CIM_ConctreteJob will also work.
+	// TODO: Make this more robust
+	if strings.HasSuffix(connectData.Class, "_ConcreteJob") == false {
+		return JobState{}, fmt.Errorf("Path is not a valid ConcreteJob. Got: %s", connectData.Class)
+	}
+
 	jobData, err := w.GetOne(connectData.Class, []string{}, connectData.QueryParams())
 	if err != nil {
 		return JobState{}, err
 	}
 	defer jobData.Release()
-	return populateJobData(jobData)
+
+	j := JobState{}
+	err = populateStruct(jobData, &j)
+	if err != nil {
+		return JobState{}, err
+	}
+	return j, nil
 }
 
 func WaitForJob(jobPath string) error {
@@ -176,11 +188,13 @@ func WaitForJob(jobPath string) error {
 			return err
 		}
 		if jobData.JobState == WMI_JOB_STATE_RUNNING {
+			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 		if jobData.JobState != WMI_JOB_STATE_COMPLETED {
 			return fmt.Errorf("Job failed: %s (%d)", jobData.ErrorDescription, jobData.ErrorCode)
 		}
+		break
 	}
 	return nil
 }

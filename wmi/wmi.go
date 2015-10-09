@@ -100,7 +100,7 @@ func (r *WMIResult) Raw() *ole.IDispatch {
 
 func (r *WMIResult) ItemAtIndex(i int) (*WMIResult, error) {
 	if r.res == nil {
-		return nil, fmt.Errorf("Object not found")
+		return nil, fmt.Errorf("Object not found: index")
 	}
 	itemRaw, err := oleutil.CallMethod(r.res, "ItemIndex", i)
 	if err != nil {
@@ -116,7 +116,7 @@ func (r *WMIResult) ItemAtIndex(i int) (*WMIResult, error) {
 
 func (r *WMIResult) GetProperty(property string) (*WMIResult, error) {
 	if r.res == nil {
-		return nil, fmt.Errorf("Object not found")
+		return nil, fmt.Errorf("Object not found: %s", property)
 	}
 	rawVal, err := oleutil.GetProperty(r.res, property)
 	if err != nil {
@@ -287,7 +287,7 @@ func (w *WMI) Gwmi(resource string, fields []string, qParams []WMIQuery) (*WMIRe
 	}
 	// result is a SWBemObjectSet
 	q := fmt.Sprintf("SELECT %s FROM %s %s", n, resource, qStr)
-	fmt.Println(q)
+	// fmt.Println(q)
 	resultRaw, err := oleutil.CallMethod(w.wmi, "ExecQuery", q)
 	if err != nil {
 		return nil, err
