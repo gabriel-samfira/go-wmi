@@ -6,10 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
 	// "github.com/go-ole/go-ole"
 	// "github.com/go-ole/go-ole/oleutil"
-
 	// "github.com/gabriel-samfira/go-wmi/wmi"
 )
 
@@ -171,7 +169,6 @@ func NewJobState(path string) (JobState, error) {
 	if err != nil {
 		return JobState{}, err
 	}
-	defer jobData.Release()
 
 	j := JobState{}
 	err = populateStruct(jobData, &j)

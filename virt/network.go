@@ -2,7 +2,9 @@ package virt
 
 import (
 	"fmt"
+	"strings"
 	"sync"
+	// "unsafe"
 
 	"github.com/gabriel-samfira/go-wmi/wmi"
 	"github.com/go-ole/go-ole"
@@ -56,7 +58,6 @@ func NewVmSwitch(name string) (*VmSwitch, error) {
 	if err != nil {
 		return nil, err
 	}
-	resources := []*ole.IDispatch{}
 
 	// Get virtual switch management service
 	svc, err := w.GetOne(VM_SWITCH_MNGMNT_SERVICE, []string{}, []wmi.WMIQuery{})
@@ -64,20 +65,17 @@ func NewVmSwitch(name string) (*VmSwitch, error) {
 		return nil, err
 	}
 
-	resources = append(resources, svc.Raw())
 	// Get switch settings data class
 	data, exists, err := getVmSwitch(name, w)
 	if err != nil {
 		return nil, err
 	}
-	resources = append(resources, data.Raw())
 	sw := &VmSwitch{
-		con:       w,
-		svc:       svc,
-		data:      data,
-		exists:    exists,
-		resources: resources,
-		name:      name,
+		con:    w,
+		svc:    svc,
+		data:   data,
+		exists: exists,
+		name:   name,
 	}
 	return sw, nil
 }
@@ -87,16 +85,7 @@ func (s *VmSwitch) Exists() bool {
 }
 
 func (s *VmSwitch) Release() {
-	for _, i := range s.resources {
-		i.Release()
-	}
 	s.con.Close()
-}
-
-func (s *VmSwitch) addCleanup(r *wmi.WMIResult) {
-	mutex.RLock()
-	s.resources = append(s.resources, r.Raw())
-	mutex.RUnlock()
 }
 
 func (s *VmSwitch) getExternalPort(name string) (*wmi.WMIResult, error) {
@@ -113,7 +102,6 @@ func (s *VmSwitch) getExternalPort(name string) (*wmi.WMIResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.addCleanup(result)
 	return result, nil
 }
 
@@ -137,7 +125,6 @@ func (s *VmSwitch) getDefaultSettingsData() (*wmi.WMIResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.addCleanup(result)
 	return result, nil
 }
 
@@ -251,51 +238,71 @@ func (s *VmSwitch) RemovePort() error {
 	if err != nil {
 		return fmt.Errorf("Failed to get assoc: %v", err)
 	}
-	defer settingsDataResult.Release()
 
 	settingsData, err := settingsDataResult.ItemAtIndex(0)
 	if err != nil {
-		return fmt.Errorf("Failed to get item: %v", err)
+		return fmt.Errorf("Failed to get item2: %v", err)
 	}
-	defer settingsData.Release()
 
 	ethernetPortAllocationData, err := settingsData.Get("associators_", nil, "Msvm_EthernetPortAllocationSettingData")
 	if err != nil {
 		return fmt.Errorf("Failed to get assoc: %v", err)
 	}
-	defer ethernetPortAllocationData.Release()
 
 	count, err := ethernetPortAllocationData.Count()
 	if err != nil {
 		return err
 	}
-
 	if count == 0 {
 		// No ports to remove
 		return nil
 	}
-
 	resources := []string{}
 	for i := 0; i < count; i++ {
 		port, err := ethernetPortAllocationData.ItemAtIndex(i)
 		if err != nil {
 			return fmt.Errorf("Failed to get item: %v", err)
 		}
-		defer port.Release()
-
-		portPath, err := port.Path()
+		resource, err := port.GetProperty("HostResource")
 		if err != nil {
-			return fmt.Errorf("Failed to get item: %v", err)
+			return err
 		}
-		resources = append(resources, portPath)
+		arr := resource.ToArray()
+		valueArray := arr.ToValueArray()
+		if len(valueArray) == 0 {
+			continue
+		}
+		valuePath := valueArray[0].(string)
+		parsed, err := wmi.NewPathParser(valuePath)
+		if err != nil {
+			return err
+		}
+		if strings.ToLower(parsed.Class) != "msvm_computersystem" && strings.ToLower(parsed.Class) != "msvm_externalethernetport" {
+			continue
+		}
+		ID, err := port.GetProperty("InstanceID")
+		if err != nil {
+			return err
+		}
+		qParams := []wmi.WMIQuery{
+			&wmi.WMIAndQuery{wmi.QueryFields{Key: "InstanceID", Value: strings.Replace(ID.Value().(string), `\`, `\\`, -1), Type: wmi.Equals}},
+		}
+		fields := []string{}
+		settings, err := s.con.GetOne(CIM_RES_ALLOC_SETTING_DATA_CLASS, fields, qParams)
+		if err != nil {
+			return fmt.Errorf("Failed to run query: %v", err)
+		}
+		path, err := settings.Path()
+		if err != nil {
+			return err
+		}
+		resources = append(resources, path)
 	}
-	fmt.Println(resources)
 	jobPath := ole.VARIANT{}
 	jobState, err := s.svc.Get("RemoveResourceSettings", resources, &jobPath)
 	if err != nil {
-		return fmt.Errorf("Failed to call DefineSystem: %v", err)
+		return fmt.Errorf("Failed to call RemoveResourceSettings: %v", err)
 	}
-
 	if jobState.Value().(int32) == wmi.WMI_JOB_STATUS_STARTED {
 		err := wmi.WaitForJob(jobPath.Value().(string))
 		if err != nil {
@@ -310,8 +317,6 @@ func (s *VmSwitch) SetExternalPort(name string) error {
 	if err != nil {
 		return fmt.Errorf("-1> %v", err)
 	}
-	defer ext_port.Release()
-
 	ext_port_path, err := ext_port.Path()
 	if err != nil {
 		return fmt.Errorf("Could not call path_: %v", err)
@@ -320,7 +325,6 @@ func (s *VmSwitch) SetExternalPort(name string) error {
 	if err != nil {
 		return fmt.Errorf("1> %v", err)
 	}
-	defer ext_port_alloc.Release()
 
 	err = ext_port_alloc.Set("HostResource", []string{ext_port_path})
 	if err != nil {
@@ -336,25 +340,23 @@ func (s *VmSwitch) SetExternalPort(name string) error {
 		ext_text,
 	}
 
-	a, err := s.data.Get("associators_", nil, "Msvm_VirtualEthernetSwitchSettingData")
+	virtualEthernetSwSetDataAssoc, err := s.data.Get("associators_", nil, "Msvm_VirtualEthernetSwitchSettingData")
 	if err != nil {
 		return fmt.Errorf("Failed to get assoc: %v", err)
 	}
-	defer a.Release()
 
-	b, err := a.ItemAtIndex(0)
+	virtualEthernetSwSetData, err := virtualEthernetSwSetDataAssoc.ItemAtIndex(0)
 	if err != nil {
 		return fmt.Errorf("Failed to get item: %v", err)
 	}
-	defer b.Release()
 
-	c, err := b.Path()
+	path, err := virtualEthernetSwSetData.Path()
 	if err != nil {
 		return fmt.Errorf("Failed to get item: %v", err)
 	}
 
 	jobPath := ole.VARIANT{}
-	jobState, err := s.svc.Get("AddResourceSettings", c, resources, nil, &jobPath)
+	jobState, err := s.svc.Get("AddResourceSettings", path, resources, nil, &jobPath)
 	if err != nil {
 		return fmt.Errorf("Failed to call DefineSystem: %v", err)
 	}

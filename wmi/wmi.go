@@ -29,7 +29,6 @@ type WMI struct {
 }
 
 type WMIResult struct {
-	res    *ole.IDispatch
 	rawRes *ole.VARIANT
 }
 
@@ -94,50 +93,59 @@ func (w *WMIOrQuery) AsString(partialQuery string) (string, error) {
 	return w.buildQuery(partialQuery, "OR")
 }
 
-func (r *WMIResult) Raw() *ole.IDispatch {
-	return r.res
+func (r *WMIResult) Raw() *ole.VARIANT {
+	return r.rawRes
 }
 
 func (r *WMIResult) ItemAtIndex(i int) (*WMIResult, error) {
-	if r.res == nil {
-		return nil, fmt.Errorf("Object not found: index")
+	res := r.rawRes.ToIDispatch()
+	if res == nil {
+		return nil, fmt.Errorf("Object is not callable")
 	}
-	itemRaw, err := oleutil.CallMethod(r.res, "ItemIndex", i)
+	res.AddRef()
+	defer res.Release()
+
+	itemRaw, err := oleutil.CallMethod(res, "ItemIndex", i)
 	if err != nil {
 		return nil, err
 	}
-	item := itemRaw.ToIDispatch()
 	wmiRes := &WMIResult{
-		res:    item,
 		rawRes: itemRaw,
 	}
 	return wmiRes, nil
 }
 
 func (r *WMIResult) GetProperty(property string) (*WMIResult, error) {
-	if r.res == nil {
-		return nil, fmt.Errorf("Object not found: %s", property)
+	res := r.rawRes.ToIDispatch()
+	if res == nil {
+		return nil, fmt.Errorf("Object is not callable")
 	}
-	rawVal, err := oleutil.GetProperty(r.res, property)
+	res.AddRef()
+	defer res.Release()
+
+	rawVal, err := oleutil.GetProperty(res, property)
 	if err != nil {
 		return nil, err
 	}
-	val := rawVal.ToIDispatch()
 	wmiRes := &WMIResult{
-		res:    val,
 		rawRes: rawVal,
 	}
 	return wmiRes, nil
 }
 
 func (r *WMIResult) Get(method string, params ...interface{}) (*WMIResult, error) {
-	rawSvc, err := oleutil.CallMethod(r.res, method, params...)
+	res := r.rawRes.ToIDispatch()
+	if res == nil {
+		return nil, fmt.Errorf("Object is not callable")
+	}
+	res.AddRef()
+	defer res.Release()
+
+	rawSvc, err := oleutil.CallMethod(res, method, params...)
 	if err != nil {
 		return nil, err
 	}
-	svc := rawSvc.ToIDispatch()
 	wmiRes := &WMIResult{
-		res:    svc,
 		rawRes: rawSvc,
 	}
 	return wmiRes, nil
@@ -160,12 +168,24 @@ func (r *WMIResult) Path() (string, error) {
 }
 
 func (r *WMIResult) Set(property string, params ...interface{}) error {
-	_, err := oleutil.PutProperty(r.res, property, params...)
+	res := r.rawRes.ToIDispatch()
+	if res == nil {
+		return fmt.Errorf("Object is not callable")
+	}
+	res.AddRef()
+	defer res.Release()
+	_, err := oleutil.PutProperty(res, property, params...)
 	return err
 }
 
 func (r *WMIResult) GetText(i int) (string, error) {
-	t, err := oleutil.CallMethod(r.res, "GetText_", i)
+	res := r.rawRes.ToIDispatch()
+	if res == nil {
+		return "", fmt.Errorf("Object is not callable")
+	}
+	res.AddRef()
+	defer res.Release()
+	t, err := oleutil.CallMethod(res, "GetText_", i)
 	if err != nil {
 		return "", err
 	}
@@ -179,12 +199,19 @@ func (r *WMIResult) Value() interface{} {
 	return r.rawRes.Value()
 }
 
-func (r *WMIResult) Release() {
-	r.res.Release()
+func (r *WMIResult) ToArray() *ole.SafeArrayConversion {
+	if r == nil || r.rawRes == nil {
+		return nil
+	}
+	return r.rawRes.ToArray()
 }
 
 func (r *WMIResult) Count() (int, error) {
-	countVar, err := oleutil.GetProperty(r.res, "Count")
+	res := r.rawRes.ToIDispatch()
+	if res == nil {
+		return 0, nil
+	}
+	countVar, err := oleutil.GetProperty(res, "Count")
 	if err != nil {
 		return 0, err
 	}
@@ -255,9 +282,7 @@ func (w *WMI) Get(params ...interface{}) (*WMIResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	svc := rawSvc.ToIDispatch()
 	ret := &WMIResult{
-		res:    svc,
 		rawRes: rawSvc,
 	}
 	return ret, nil
@@ -268,9 +293,7 @@ func (w *WMI) ExecMethod(params ...interface{}) (*WMIResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	svc := rawSvc.ToIDispatch()
 	ret := &WMIResult{
-		res:    svc,
 		rawRes: rawSvc,
 	}
 	return ret, nil
@@ -292,9 +315,7 @@ func (w *WMI) Gwmi(resource string, fields []string, qParams []WMIQuery) (*WMIRe
 	if err != nil {
 		return nil, err
 	}
-	res := resultRaw.ToIDispatch()
 	wmiRes := &WMIResult{
-		res:    res,
 		rawRes: resultRaw,
 	}
 	return wmiRes, nil
