@@ -11,8 +11,8 @@ import (
 	// "github.com/gabriel-samfira/go-wmi/wmi"
 )
 
-// PathParser contains the parsed fields of a __PATH
-type PathParser struct {
+// WMILocation contains the parsed fields of a __PATH
+type WMILocation struct {
 	// Server represents the server on which this query should be run
 	Server string
 	// Namespace represents the namespace in which to run the query
@@ -30,6 +30,18 @@ var requiredFields = []string{
 	"server",
 	"namespace",
 	"class",
+}
+
+func (w *WMILocation) Close() {
+	w.conn.Close()
+}
+
+func (w *WMILocation) GetWMIResult() (*WMIResult, error) {
+	result, err := w.conn.GetOne(w.Class, []string{}, w.QueryParams())
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func validateResult(result map[string]string) error {
@@ -67,7 +79,7 @@ func parseParams(params string) (map[string]string, error) {
 	return result, nil
 }
 
-func (p *PathParser) QueryParams() []WMIQuery {
+func (p *WMILocation) QueryParams() []WMIQuery {
 	q := []WMIQuery{}
 	if len(p.Params) > 0 {
 		for key, val := range p.Params {
@@ -77,7 +89,7 @@ func (p *PathParser) QueryParams() []WMIQuery {
 	return q
 }
 
-func NewPathParser(path string) (*PathParser, error) {
+func NewWMILocation(path string) (*WMILocation, error) {
 	result := parsePath(path)
 	err := validateResult(result)
 	if err != nil {
@@ -87,11 +99,16 @@ func NewPathParser(path string) (*PathParser, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &PathParser{
+	w, err := NewConnection(result["server"], result["namespace"])
+	if err != nil {
+		return nil, err
+	}
+	return &WMILocation{
 		Server:    result["server"],
 		Namespace: result["namespace"],
 		Class:     result["class"],
 		Params:    params,
+		conn:      w,
 	}, nil
 }
 
@@ -149,23 +166,19 @@ func populateStruct(j *WMIResult, s interface{}) error {
 }
 
 func NewJobState(path string) (JobState, error) {
-	connectData, err := NewPathParser(path)
+	conn, err := NewWMILocation(path)
 	if err != nil {
 		return JobState{}, err
 	}
-	w, err := NewConnection(connectData.Server, connectData.Namespace)
-	if err != nil {
-		return JobState{}, err
-	}
-	defer w.Close()
+	defer conn.Close()
 	// This may blow up. In theory, both CIM_ConcreteJob and Msvm_Concrete job will
 	// work with this. Also, anything that inherits CIM_ConctreteJob will also work.
 	// TODO: Make this more robust
-	if strings.HasSuffix(connectData.Class, "_ConcreteJob") == false {
-		return JobState{}, fmt.Errorf("Path is not a valid ConcreteJob. Got: %s", connectData.Class)
+	if strings.HasSuffix(conn.Class, "_ConcreteJob") == false {
+		return JobState{}, fmt.Errorf("Path is not a valid ConcreteJob. Got: %s", conn.Class)
 	}
 
-	jobData, err := w.GetOne(connectData.Class, []string{}, connectData.QueryParams())
+	jobData, err := conn.GetWMIResult()
 	if err != nil {
 		return JobState{}, err
 	}

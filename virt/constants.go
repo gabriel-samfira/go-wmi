@@ -2,6 +2,7 @@ package virt
 
 const (
 	EXTERNAL_PORT                    = "Msvm_ExternalEthernetPort"
+	COMPUTER_SYSTEM                  = "Msvm_ComputerSystem"
 	VM_SWITCH                        = "Msvm_VirtualEthernetSwitch"
 	VM_SWITCH_SETTINGS               = "Msvm_VirtualEthernetSwitchSettingData"
 	VM_SWITCH_MNGMNT_SERVICE         = "Msvm_VirtualEthernetSwitchManagementService"

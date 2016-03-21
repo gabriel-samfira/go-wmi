@@ -3,6 +3,7 @@ package wmi
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/go-ole/go-ole"
 	"github.com/go-ole/go-ole/oleutil"
@@ -14,6 +15,7 @@ type SetParams interface{}
 var (
 	Equals WMIQueryType = "="
 	Like   WMIQueryType = " Like "
+	mutex               = sync.RWMutex{}
 )
 
 type WMI struct {
@@ -30,6 +32,8 @@ type WMI struct {
 
 type WMIResult struct {
 	rawRes *ole.VARIANT
+
+	err error
 }
 
 type WMIQuery interface {
@@ -93,6 +97,18 @@ func (w *WMIOrQuery) AsString(partialQuery string) (string, error) {
 	return w.buildQuery(partialQuery, "OR")
 }
 
+func (r *WMIResult) setError(err error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	r.err = err
+}
+
+func (r *WMIResult) Error() error {
+	mutex.Lock()
+	defer mutex.Unlock()
+	return r.err
+}
+
 func (r *WMIResult) Raw() *ole.VARIANT {
 	return r.rawRes
 }
@@ -113,6 +129,23 @@ func (r *WMIResult) ItemAtIndex(i int) (*WMIResult, error) {
 		rawRes: itemRaw,
 	}
 	return wmiRes, nil
+}
+
+func (r *WMIResult) Elements() ([]*WMIResult, error) {
+	var err error
+	var count int
+	count, err = r.Count()
+	if err != nil {
+		return []*WMIResult{}, err
+	}
+	results := make([]*WMIResult, count)
+	for i := 0; i < count; i++ {
+		results[i], err = r.ItemAtIndex(i)
+		if err != nil {
+			return []*WMIResult{}, err
+		}
+	}
+	return results, nil
 }
 
 func (r *WMIResult) GetProperty(property string) (*WMIResult, error) {
