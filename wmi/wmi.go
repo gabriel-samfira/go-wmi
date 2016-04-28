@@ -273,9 +273,10 @@ func NewConnection(params ...interface{}) (*WMI, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	rawSvc, err := oleutil.CallMethod(qInterface, "ConnectServer", params...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error: %v", err)
 	}
 	wmi := rawSvc.ToIDispatch()
 	w := &WMI{

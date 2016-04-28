@@ -244,7 +244,7 @@ func (s *VmSwitch) Create() error {
 	return err
 }
 
-func (s *VmSwitch) waitForSettings() (*wmi.WMIResult, error) {
+func (s *VmSwitch) getSwitchSettings() (*wmi.WMIResult, error) {
 	if s.Exists() == false {
 		return nil, fmt.Errorf("Switch %s is not yet created", s.name)
 	}
@@ -271,7 +271,7 @@ func (s *VmSwitch) waitForSettings() (*wmi.WMIResult, error) {
 }
 
 func (s *VmSwitch) getSwitchPorts() ([]vmswitchPorts, error) {
-	settingsData, err := s.waitForSettings()
+	settingsData, err := s.getSwitchSettings()
 	if err != nil {
 		return []vmswitchPorts{}, fmt.Errorf("Failed to get item2: %v", err)
 	}
@@ -421,7 +421,7 @@ func (s *VmSwitch) SetExternalPort(name string) error {
 		ext_text,
 	}
 
-	virtualEthernetSwSetData, err := s.waitForSettings()
+	virtualEthernetSwSetData, err := s.getSwitchSettings()
 	if err != nil {
 		return fmt.Errorf("Failed to get item: %v", err)
 	}
