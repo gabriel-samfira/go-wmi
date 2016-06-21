@@ -10,20 +10,11 @@ import (
 
 func main() {
 	swname := "br100"
-
-	vmsw, err := virt.NewVmSwitch(swname)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
 	name := "Intel(R) PRO/1000 MT Network Connection #2"
 
+	vmsw := virt.NewVmSwitch(swname)
 	fmt.Printf("Creating %s\r\n", swname)
-	if err := vmsw.Create(); err != nil {
-		fmt.Println(err)
-		return
-	}
+	vmsw.Create()
 
 	// newName := "newName"
 
@@ -34,21 +25,18 @@ func main() {
 	// }
 
 	fmt.Printf("Setting external port to: %s\r\n", name)
-	if err := vmsw.SetExternalPort(name); err != nil {
-		fmt.Println(err)
-		return
-	}
+	vmsw.SetExternalPort(name)
 
 	fmt.Printf("Removing ports from %s\r\n", vmsw.Name())
-	if err := vmsw.RemovePort(); err != nil {
-		fmt.Println(err)
-		return
-	}
+	vmsw.RemovePort()
 
 	fmt.Printf("deleting %s\r\n", vmsw.Name())
-	if err := vmsw.Delete(); err != nil {
-		fmt.Println(err)
-		return
-	}
+	vmsw.Delete()
+
 	vmsw.Release()
+
+	if err := vmsw.Error(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 }

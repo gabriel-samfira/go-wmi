@@ -15,31 +15,44 @@ type Command struct {
 	cwd  string
 	proc *wmi.WMIResult
 	conn *wmi.WMI
+	err  error
 }
 
-func NewCommand(server, username, password, domain, cmd string) (*Command, error) {
+func (c Command) Error() error {
+	return c.err
+}
+
+func NewCommand(server, username, password, domain, cmd string) *Command {
+	var (
+		err       error
+		authority string
+	)
+
+	command := &Command{}
+	command.cmd = cmd
+
 	// var authority string
 	if server == "" {
 		server = "."
 	}
+
 	if domain != "" {
 		authority = fmt.Sprintf("Kerberos:%s", domain)
 	}
-	w, err := wmi.NewConnection(server, `Root\CIMV2`, username, password, nil, nil)
+
+	command.conn, err = wmi.NewConnection(server, `Root\CIMV2`, username, password, authority, nil)
 	if err != nil {
-		return nil, err
+		command.err = err
+		return command
 	}
 
-	proc, err := w.Get("Win32_Process")
+	command.proc, err = command.conn.Get("Win32_Process")
 	if err != nil {
-		return nil, err
+		command.err = err
+		return command
 	}
 
-	return &Command{
-		cmd:  cmd,
-		proc: proc,
-		conn: w,
-	}, nil
+	return command
 }
 
 func (c *Command) SetCWD(path string) {
@@ -54,16 +67,24 @@ func (c *Command) GetCWD() string {
 	return c.cwd
 }
 
-func (c *Command) Run() error {
+func (c *Command) Run() {
+	if c.err != nil {
+		return
+	}
+
 	cwd := c.GetCWD()
-	processId := ole.VARIANT{}
-	ret, err := c.proc.Get("Create", c.cmd, cwd, nil, &processId)
+	processID := ole.VARIANT{}
+
+	ret, err := c.proc.Get("Create", c.cmd, cwd, nil, &processID)
 	if err != nil {
-		return fmt.Errorf("Error running Create: %v", err)
+		c.err = fmt.Errorf("Error running Create: %v", err)
+		return
 	}
+
 	if ret.Value().(int32) != 0 {
-		return fmt.Errorf("process exited with status: %v", ret.Value().(int32))
+		c.err = fmt.Errorf("process exited with status: %v", ret.Value().(int32))
+		return
 	}
-	fmt.Printf("Process %v exited with status 0\r\n", processId.Value().(int32))
-	return nil
+
+	fmt.Printf("Process %v exited with status 0\r\n", processID.Value().(int32))
 }

@@ -21,6 +21,8 @@ type vmswitchPorts struct {
 	location     *wmi.WMILocation
 }
 
+// VmSwitch type for holding information
+// about virtual switches that have been created
 type VmSwitch struct {
 	con  *wmi.WMI
 	svc  *wmi.WMIResult
@@ -28,36 +30,46 @@ type VmSwitch struct {
 
 	exists bool
 	name   string
+	// every method for this type will check the
+	// error and if it's an error it will return it
+	err error
 }
 
 func (v *vmswitchPorts) InstanceID() string {
 	return strings.Replace(v.instanceID, `\`, `\\`, -1)
 }
 
+func (v VmSwitch) Error() error {
+	return v.err
+}
+
 // NewVmSwitch returns a new VmSwitch type
 // If the switch exists, this will return a VmSwitch type populated with
 // the switch information
-func NewVmSwitch(name string) (*VmSwitch, error) {
+func NewVmSwitch(name string) *VmSwitch {
+	sw := &VmSwitch{}
+
+	// TODO(gabrel) why this fails here? ths because the connection name is invalid?
 	w, err := wmi.NewConnection(".", `root\virtualization\v2`)
 	if err != nil {
-		return nil, err
+		sw.err = err
+		return sw
 	}
 
 	// Get virtual switch management service
 	svc, err := w.GetOne(VM_SWITCH_MNGMNT_SERVICE, []string{}, []wmi.WMIQuery{})
 	if err != nil {
-		return nil, err
+		sw.err = err
+		return sw
 	}
 
-	sw := &VmSwitch{
-		con:  w,
-		svc:  svc,
-		name: name,
-	}
-	if err := sw.refresh(); err != nil {
-		return nil, err
-	}
-	return sw, nil
+	sw.con = w
+	sw.svc = svc
+	sw.name = name
+
+	sw.refresh() // this saves the error in sw.err
+
+	return sw
 }
 
 func (s *VmSwitch) Name() string {
@@ -89,15 +101,19 @@ func (s *VmSwitch) getVmSwitch(name string) (*wmi.WMIResult, bool, error) {
 	return data, false, nil
 }
 
-func (s *VmSwitch) refresh() error {
-	if s.name == "" {
-		return fmt.Errorf("Switch name not set")
+func (s *VmSwitch) refresh() {
+	if s.err != nil {
+		return
 	}
+
+	if s.name == "" {
+		s.err = fmt.Errorf("Switch name not set")
+		return
+	}
+
 	mutex.Lock()
 	defer mutex.Unlock()
-	var err error
-	s.data, s.exists, err = s.getVmSwitch(s.name)
-	return err
+	s.data, s.exists, s.err = s.getVmSwitch(s.name)
 }
 
 func (s *VmSwitch) setName(name string) {
@@ -113,6 +129,9 @@ func (s *VmSwitch) Exists() bool {
 }
 
 func (s *VmSwitch) Release() {
+	if s.err != nil {
+		return
+	}
 	s.con.Close()
 }
 
@@ -156,92 +175,123 @@ func (s *VmSwitch) getDefaultSettingsData() (*wmi.WMIResult, error) {
 	return result, nil
 }
 
-func (s *VmSwitch) SetSwitchName(name string) error {
+func (s *VmSwitch) SetSwitchName(name string) {
+	if s.err != nil {
+		return
+	}
+
 	//Change switch name
-	var result *wmi.WMIResult
-	var err error
-	var text string
+	var (
+		result *wmi.WMIResult
+		err    error
+		text   string
+	)
 
 	if result, err = s.data.Get("associators_", nil, VM_SWITCH_SETTINGS); err != nil {
-		return err
+		s.err = err
+		return
 	}
 	if result, err = result.ItemAtIndex(0); err != nil {
-		return err
+		s.err = err
+		return
 	}
 	if err = result.Set("ElementName", name); err != nil {
-		return err
+		s.err = err
+		return
 	}
 	if text, err = result.GetText(1); err != nil {
-		return err
+		s.err = err
+		return
 	}
+
 	jobPath := ole.VARIANT{}
 	jobState, err := s.svc.Get("ModifySystemSettings", text, &jobPath)
 	if err != nil {
-		return fmt.Errorf("Failed to call ModifySystemSettings: %v", err)
+		s.err = fmt.Errorf("Failed to call ModifySystemSettings: %v", err)
+		return
 	}
 
 	if jobState.Value().(int32) == wmi.WMI_JOB_STATUS_STARTED {
 		err := wmi.WaitForJob(jobPath.Value().(string))
 		if err != nil {
-			return err
+			s.err = err
+			return
 		}
 	}
+
 	s.setName(name)
-	return nil
 }
 
-func (s *VmSwitch) Delete() error {
+func (s *VmSwitch) Delete() {
+	if s.err != nil {
+		return
+	}
+
 	sw, err := s.data.Path()
 	if err != nil {
-		return fmt.Errorf("Failed to get Path: %v", err)
+		s.err = fmt.Errorf("Failed to get Path: %v", err)
+		return
 	}
 	jobPath := ole.VARIANT{}
 	jobState, err := s.svc.Get("DestroySystem", sw, &jobPath)
 	if err != nil {
-		return fmt.Errorf("Failed to call DestroySystem: %v", err)
+		s.err = fmt.Errorf("Failed to call DestroySystem: %v", err)
+		return
 	}
 	if jobState.Value().(int32) == wmi.WMI_JOB_STATUS_STARTED {
 		err := wmi.WaitForJob(jobPath.Value().(string))
 		if err != nil {
-			return err
+			s.err = err
+			return
 		}
 	}
-	return nil
 }
 
-func (s *VmSwitch) Create() error {
+func (s *VmSwitch) Create() {
+	// first check the vmswitch if it has error from
+	// previously operation making this no/op
+	if s.err != nil {
+		return
+	}
+
 	if s.Exists() {
-		return nil
+		s.err = nil
+		return
 	}
 
 	swInstance, err := s.data.Get("SpawnInstance_")
 	if err != nil {
-		return fmt.Errorf("Failed to call SpawnInstance_: %v", err)
+		s.err = fmt.Errorf("Failed to call SpawnInstance_: %v", err)
+		return
 	}
 	err = swInstance.Set("ElementName", s.name)
 	if err != nil {
-		return fmt.Errorf("Failed to set switch ElementName: %v", err)
+		s.err = fmt.Errorf("Failed to set switch ElementName: %v", err)
+		return
 	}
 
 	switchText, err := swInstance.GetText(1)
 	if err != nil {
-		return fmt.Errorf("Failed to get switch text: %v", err)
+		err = fmt.Errorf("Failed to get switch text: %v", err)
+		return
 	}
 
 	jobPath := ole.VARIANT{}
 	resultingSystem := ole.VARIANT{}
 	jobState, err := s.svc.Get("DefineSystem", switchText, nil, nil, &resultingSystem, &jobPath)
 	if err != nil {
-		return fmt.Errorf("Failed to call DefineSystem: %v", err)
+		s.err = fmt.Errorf("Failed to call DefineSystem: %v", err)
+		return
 	}
 	if jobState.Value().(int32) == wmi.WMI_JOB_STATUS_STARTED {
 		err := wmi.WaitForJob(jobPath.Value().(string))
 		if err != nil {
-			return err
+			s.err = err
+			return
 		}
 	}
-	err = s.refresh()
-	return err
+
+	s.refresh()
 }
 
 func (s *VmSwitch) getSwitchSettings() (*wmi.WMIResult, error) {
@@ -326,10 +376,15 @@ func (s *VmSwitch) getSwitchPorts() ([]vmswitchPorts, error) {
 	return switchPorts, nil
 }
 
-func (s *VmSwitch) RemovePort() error {
+func (s *VmSwitch) RemovePort() {
+	if s.err != nil {
+		return
+	}
+
 	ports, err := s.getSwitchPorts()
 	if err != nil {
-		return err
+		s.err = err
+		return
 	}
 	resources := []string{}
 	for _, port := range ports {
@@ -341,30 +396,35 @@ func (s *VmSwitch) RemovePort() error {
 		}
 		settings, err := s.con.GetOne(CIM_RES_ALLOC_SETTING_DATA_CLASS, []string{}, qParams)
 		if err != nil {
-			return fmt.Errorf("Failed to run query: %v", err)
+			s.err = fmt.Errorf("Failed to run query: %v", err)
+			return
 		}
 		path, err := settings.Path()
 		if err != nil {
-			return err
+			s.err = err
+			return
 		}
 		resources = append(resources, path)
 	}
 
 	if len(resources) == 0 {
-		return nil
+		s.err = nil
+		return
 	}
+
 	jobPath := ole.VARIANT{}
 	jobState, err := s.svc.Get("RemoveResourceSettings", resources, &jobPath)
 	if err != nil {
-		return fmt.Errorf("Failed to call RemoveResourceSettings: %v", err)
+		s.err = fmt.Errorf("Failed to call RemoveResourceSettings: %v", err)
+		return
 	}
 	if jobState.Value().(int32) == wmi.WMI_JOB_STATUS_STARTED {
 		err := wmi.WaitForJob(jobPath.Value().(string))
 		if err != nil {
-			return err
+			s.err = err
+			return
 		}
 	}
-	return nil
 }
 
 func (s *VmSwitch) getExternalPortSettingsData(name string) (*wmi.WMIResult, error) {
@@ -389,59 +449,75 @@ func (s *VmSwitch) getExternalPortSettingsData(name string) (*wmi.WMIResult, err
 }
 
 func (s *VmSwitch) hasPortAttached(name string) (bool, error) {
-	if ports, err := s.getSwitchPorts(); err == nil {
+	var (
+		ports []vmswitchPorts
+		err   error
+	)
+
+	if ports, err = s.getSwitchPorts(); err == nil {
 		for _, port := range ports {
 			if name == port.name {
 				return true, nil
 			}
 		}
 		return false, nil
-	} else {
-		return false, err
 	}
+
+	return false, err
 }
 
-func (s *VmSwitch) SetExternalPort(name string) error {
-	if hasPort, err := s.hasPortAttached(name); err != nil {
-		return err
-	} else {
-		if hasPort {
-			return nil
-		}
+func (s *VmSwitch) SetExternalPort(name string) {
+	if s.err != nil {
+		return
 	}
+
+	if hasPort, err := s.hasPortAttached(name); err != nil {
+		s.err = err
+		return
+	} else if hasPort {
+		s.err = nil
+		return
+	}
+
 	port_data, err := s.getExternalPortSettingsData(name)
 	if err != nil {
-		return err
+		s.err = err
+		return
 	}
 	ext_text, err := port_data.GetText(1)
 	if err != nil {
-		return fmt.Errorf("Failed to get ext_port_alloc text: %v", err)
+		s.err = fmt.Errorf("Failed to get ext_port_alloc text: %v", err)
+		return
 	}
+
 	resources := []string{
 		ext_text,
 	}
 
 	virtualEthernetSwSetData, err := s.getSwitchSettings()
 	if err != nil {
-		return fmt.Errorf("Failed to get item: %v", err)
+		s.err = fmt.Errorf("Failed to get item: %v", err)
+		return
 	}
 
 	path, err := virtualEthernetSwSetData.Path()
 	if err != nil {
-		return fmt.Errorf("Failed to get item: %v", err)
+		s.err = fmt.Errorf("Failed to get item: %v", err)
+		return
 	}
 
 	jobPath := ole.VARIANT{}
 	jobState, err := s.svc.Get("AddResourceSettings", path, resources, nil, &jobPath)
 	if err != nil {
-		return fmt.Errorf("Failed to call AddResourceSettings: %v", err)
+		s.err = fmt.Errorf("Failed to call AddResourceSettings: %v", err)
+		return
 	}
 
 	if jobState.Value().(int32) == wmi.WMI_JOB_STATUS_STARTED {
 		err := wmi.WaitForJob(jobPath.Value().(string))
 		if err != nil {
-			return err
+			s.err = err
+			return
 		}
 	}
-	return nil
 }
