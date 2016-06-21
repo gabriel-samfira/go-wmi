@@ -2,20 +2,18 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/gabriel-samfira/go-wmi/cmd"
 )
 
 func main() {
-	c, err := cmd.NewCommand("192.168.200.105", "Administrator", "P@ssw0rd", "", `cmd.exe /c dir`)
+	cmd := cmd.NewCommand("192.168.200.105","Administrator","P@ssw0rd","",`cmd.exe /c dir`)
+	cmd.SetCWD(`c:\`)
+	cmd.Run()
+	err := cmd.Error()
 	if err != nil {
 		fmt.Println(err)
-		return
+		os.Exit(1)
 	}
-	c.SetCWD(`c:\`)
-	err = c.Run()
-	if err != nil {
-		fmt.Println(err)
-	}
-	return
 }
