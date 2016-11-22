@@ -18,14 +18,14 @@ type Command struct {
 }
 
 func NewCommand(server, username, password, domain, cmd string) (*Command, error) {
-	// var authority string
+	var authority string
 	if server == "" {
 		server = "."
 	}
 	if domain != "" {
 		authority = fmt.Sprintf("Kerberos:%s", domain)
 	}
-	w, err := wmi.NewConnection(server, `Root\CIMV2`, username, password, nil, nil)
+	w, err := wmi.NewConnection(server, `Root\CIMV2`, username, password, nil, authority)
 	if err != nil {
 		return nil, err
 	}
