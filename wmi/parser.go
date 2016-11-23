@@ -132,34 +132,29 @@ type JobState struct {
 // it will populate the go type with values found in WMIResult
 func populateStruct(j *WMIResult, s interface{}) error {
 	valuePtr := reflect.ValueOf(s)
-	v := reflect.Indirect(valuePtr)
+	elem := valuePtr.Elem()
+	typeOfElem := elem.Type()
 
-	for i := 0; i < v.NumField(); i++ {
-		field := valuePtr.Elem().Field(i)
-		name := v.Type().Field(i).Name
-		kind := v.Type().Field(i).Type.Kind()
+	for i := 0; i < elem.NumField(); i++ {
+		field := elem.Field(i)
+		name := typeOfElem.Field(i).Name
+
 		res, err := j.GetProperty(name)
-
 		if err != nil {
-			return err
+			return fmt.Errorf("Failed to get property %s: %s", name, err)
 		}
-		jobFieldValue := res.Value()
-		if jobFieldValue == nil {
+
+		wmiFieldValue := res.Value()
+		if wmiFieldValue == nil {
 			continue
 		}
-		switch kind {
-		case reflect.Int:
-			if v, ok := jobFieldValue.(int32); !ok {
-				return fmt.Errorf("Invalid return value for %s: %T", name, jobFieldValue)
-			} else {
-				field.SetInt(int64(v))
-			}
-		case reflect.String:
-			if v, ok := jobFieldValue.(string); !ok {
-				return fmt.Errorf("Invalid return value for %s: %T", name, jobFieldValue)
-			} else {
-				field.SetString(v)
-			}
+
+		v := reflect.ValueOf(wmiFieldValue)
+		if v.Kind() != field.Kind() {
+			return fmt.Errorf("Invalid type returned by query for field %s: %v", name, v.Kind())
+		}
+		if field.CanSet() {
+			field.Set(v)
 		}
 	}
 	return nil

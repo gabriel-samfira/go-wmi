@@ -19,4 +19,5 @@ const (
 	OPERATION_MODE_ACCESS            = 1
 	OPERATION_MODE_TRUNK             = 2
 	ETH_CONN_RES_SUB_TYPE            = "Microsoft:Hyper-V:Ethernet Connection"
+	NET_ADAPTER_CLASS                = "MSFT_NetAdapter"
 )
