@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	adapters, err := virt.GetNetworkAdapters("Ethernet0")
+	adapters, err := virt.GetNetworkAdapters("Ethernet1")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -22,6 +22,11 @@ func main() {
 	if len(adapters) > 0 {
 		a := adapters[0]
 		v, err := a.GetIPAddresses()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		err = a.Enable()
 		if err != nil {
 			fmt.Println(err)
 			return

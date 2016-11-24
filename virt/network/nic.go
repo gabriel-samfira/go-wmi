@@ -3,11 +3,20 @@ package network
 import (
 	"fmt"
 	"reflect"
+	"sync"
 
 	"github.com/gabriel-samfira/go-wmi/wmi"
 )
 
 type PowerManagementCapability uint16
+type NetAdapterState int32
+
+const (
+	AdapterUnknown NetAdapterState = iota
+	AdapterPresent
+	AdapterStarted
+	AdapterDisabled
+)
 
 const (
 	Unknown PowerManagementCapability = iota
@@ -69,6 +78,8 @@ type NetIPAddress struct {
 	SkipAsSource            bool
 }
 
+//NetAdapter is the equivalent of MSFT_NetAdapter. More info here:
+// https://msdn.microsoft.com/en-us/library/hh968170%28v=vs.85%29.aspx?f=255&MSPPError=-2147217396
 type NetAdapter struct {
 	Caption                                          string
 	Description                                      string
@@ -151,10 +162,71 @@ type NetAdapter struct {
 	LowerLayerInterfaceIndices                       []uint32
 	HigherLayerInterfaceIndices                      []int32
 	AdminLocked                                      bool
+
+	cimObject *wmi.WMIResult `tag:"ignore"`
+	lock      sync.Mutex     `tag:"ignore"`
 }
 
 func (n *NetAdapter) GetIPAddresses() ([]NetIPAddress, error) {
 	return GetNetIPAddresses(int(n.InterfaceIndex))
+}
+
+func (n *NetAdapter) callFunction(method string, params ...interface{}) (*NetAdapter, error) {
+	if n.cimObject == nil {
+		return nil, nil
+	}
+
+	var res *wmi.WMIResult
+	var err error
+	res, err = n.cimObject.Get(method, params...)
+	if err != nil {
+		return nil, err
+	}
+	data := NetAdapter{}
+	populateStruct(res, &data)
+	return &data, nil
+}
+
+func (n *NetAdapter) Disable() error {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+	if n.State != 2 {
+		return nil
+	}
+	res, err := n.callFunction("Disable")
+	if err != nil {
+		return err
+	}
+	n = res
+	return nil
+}
+
+func (n *NetAdapter) Enable() error {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+	if n.State != 3 {
+		return nil
+	}
+	res, err := n.callFunction("Enable")
+	if err != nil {
+		return err
+	}
+	n = res
+	return nil
+}
+
+func (n *NetAdapter) Rename(name string) error {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+	if n.Name == name {
+		return nil
+	}
+	res, err := n.callFunction("Rename", name)
+	if err != nil {
+		return err
+	}
+	n = res
+	return nil
 }
 
 func populateStruct(j *wmi.WMIResult, s interface{}) error {
@@ -164,6 +236,9 @@ func populateStruct(j *wmi.WMIResult, s interface{}) error {
 
 	for i := 0; i < elem.NumField(); i++ {
 		field := elem.Field(i)
+		if typeOfElem.Field(i).Tag.Get("tag") == "ignore" {
+			continue
+		}
 		name := typeOfElem.Field(i).Name
 
 		res, err := j.GetProperty(name)
@@ -266,6 +341,7 @@ func GetNetworkAdapters(name string) ([]NetAdapter, error) {
 		if err := populateStruct(adapter, s); err != nil {
 			return []NetAdapter{}, err
 		}
+		s.cimObject = adapter
 		ret[index] = *s
 	}
 	return ret, nil
