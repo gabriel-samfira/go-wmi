@@ -48,7 +48,7 @@ type QueryFields struct {
 
 func (w *QueryFields) sanitizeValue(val interface{}) (string, error) {
 	switch v := val.(type) {
-	case int, string, bool, float32, float64:
+	case int, string, bool, float32, float64, int64, int32:
 		return fmt.Sprintf("%v", v), nil
 	default:
 		return "", fmt.Errorf("Invalid field value")

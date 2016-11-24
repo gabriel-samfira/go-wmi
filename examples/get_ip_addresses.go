@@ -40,12 +40,17 @@ func main() {
 				fmt.Println(err)
 				os.Exit(1)
 			}
+			l, err := elements[i].GetProperty("ValidLifetime")
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
 			iface, err := elements[i].GetProperty("InterfaceAlias")
 			if err != nil {
 				fmt.Println(err)
 				os.Exit(1)
 			}
-			fmt.Printf("Found IP %v on interface %v\n", address.Value(), iface.Value())
+			fmt.Printf("Found IP %v on interface %v --> %v\n", address.Value(), iface.Value(), l.Value())
 		}
 	}
 	return

@@ -1,4 +1,4 @@
-package virt
+package network
 
 import (
 	"fmt"

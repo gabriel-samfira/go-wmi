@@ -1,4 +1,4 @@
-package virt
+package network
 
 import (
 	"fmt"
@@ -19,6 +19,55 @@ const (
 	PowerCycling
 	TimedPowerOn
 )
+
+type NetIPAddress struct {
+	InstanceID              string
+	Caption                 string
+	ElementName             string
+	InstallDate             string
+	StatusDescriptions      []string
+	Status                  string
+	HealthState             uint16
+	CommunicationStatus     uint16
+	DetailedStatus          uint16
+	OperatingStatus         uint16
+	PrimaryStatus           uint16
+	OtherEnabledState       string
+	RequestedState          int32
+	EnabledDefault          int32
+	SystemCreationClassName string
+	SystemName              string
+	CreationClassName       string
+	Description             string
+	Name                    string
+	OperationalStatus       []uint16
+	EnabledState            uint16
+	TimeOfLastStateChange   string
+	NameFormat              string
+	ProtocolType            uint16
+	OtherTypeDescription    string
+	ProtocolIFType          int32
+	IPv4Address             string
+	IPv6Address             string
+	Address                 string
+	SubnetMask              string
+	PrefixLength            uint8
+	AddressType             uint16
+	IPVersionSupport        uint16
+	AddressOrigin           int32
+	InterfaceIndex          int32
+	InterfaceAlias          string
+	IPAddress               string
+	AddressFamily           int32
+	Type                    uint8
+	Store                   uint8
+	PrefixOrigin            int32
+	SuffixOrigin            int32
+	AddressState            int32
+	ValidLifetime           string
+	PreferredLifetime       string
+	SkipAsSource            bool
+}
 
 type NetAdapter struct {
 	Caption                                          string
@@ -68,7 +117,7 @@ type NetAdapter struct {
 	HardwareInterface                                bool
 	WdmInterface                                     bool
 	EndPointInterface                                bool
-	iSCSIInterface                                   bool
+	ISCSIInterface                                   bool
 	State                                            int32
 	NdisMedium                                       int32
 	NdisPhysicalMedium                               int32
@@ -104,6 +153,10 @@ type NetAdapter struct {
 	AdminLocked                                      bool
 }
 
+func (n *NetAdapter) GetIPAddresses() ([]NetIPAddress, error) {
+	return GetNetIPAddresses(int(n.InterfaceIndex))
+}
+
 func populateStruct(j *wmi.WMIResult, s interface{}) error {
 	valuePtr := reflect.ValueOf(s)
 	elem := valuePtr.Elem()
@@ -124,17 +177,17 @@ func populateStruct(j *wmi.WMIResult, s interface{}) error {
 		}
 
 		var fieldValue interface{}
-		switch name {
-		case "PowerManagementCapabilities":
+		switch field.Interface().(type) {
+		case []uint16:
 			if c := res.ToArray(); c != nil {
 				val := c.ToValueArray()
-				asString := make([]PowerManagementCapability, len(val))
+				asString := make([]uint16, len(val))
 				for k, v := range val {
-					asString[k] = v.(PowerManagementCapability)
+					asString[k] = v.(uint16)
 				}
 				fieldValue = asString
 			}
-		case "NetworkAddresses":
+		case []string:
 			if c := res.ToArray(); c != nil {
 				val := c.ToValueArray()
 				asString := make([]string, len(val))
@@ -143,7 +196,7 @@ func populateStruct(j *wmi.WMIResult, s interface{}) error {
 				}
 				fieldValue = asString
 			}
-		case "LowerLayerInterfaceIndices":
+		case []uint32:
 			if c := res.ToArray(); c != nil {
 				val := c.ToValueArray()
 				asString := make([]uint32, len(val))
@@ -152,12 +205,21 @@ func populateStruct(j *wmi.WMIResult, s interface{}) error {
 				}
 				fieldValue = asString
 			}
-		case "HigherLayerInterfaceIndices":
+		case []int32:
 			if c := res.ToArray(); c != nil {
 				val := c.ToValueArray()
 				asString := make([]int32, len(val))
 				for k, v := range val {
 					asString[k] = v.(int32)
+				}
+				fieldValue = asString
+			}
+		case []int64:
+			if c := res.ToArray(); c != nil {
+				val := c.ToValueArray()
+				asString := make([]int64, len(val))
+				for k, v := range val {
+					asString[k] = v.(int64)
 				}
 				fieldValue = asString
 			}
@@ -203,6 +265,43 @@ func GetNetworkAdapters(name string) ([]NetAdapter, error) {
 		s := &NetAdapter{}
 		if err := populateStruct(adapter, s); err != nil {
 			return []NetAdapter{}, err
+		}
+		ret[index] = *s
+	}
+	return ret, nil
+}
+
+func GetNetIPAddresses(index int) ([]NetIPAddress, error) {
+	con, err := NewStandardCimV2Connection()
+	if err != nil {
+		return []NetIPAddress{}, err
+	}
+	defer con.Close()
+
+	q := []wmi.WMIQuery{}
+	if index != 0 {
+		q = []wmi.WMIQuery{
+			&wmi.WMIAndQuery{
+				wmi.QueryFields{
+					Key:   "InterfaceIndex",
+					Value: index,
+					Type:  wmi.Equals},
+			},
+		}
+	}
+	result, err := con.Gwmi("MSFT_NetIPAddress", []string{}, q)
+	if err != nil {
+		return []NetIPAddress{}, err
+	}
+	ips, err := result.Elements()
+	if len(ips) == 0 {
+		return []NetIPAddress{}, nil
+	}
+	ret := make([]NetIPAddress, len(ips))
+	for index, ip := range ips {
+		s := &NetIPAddress{}
+		if err := populateStruct(ip, s); err != nil {
+			return []NetIPAddress{}, err
 		}
 		ret[index] = *s
 	}

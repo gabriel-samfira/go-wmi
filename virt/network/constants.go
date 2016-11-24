@@ -1,4 +1,4 @@
-package virt
+package network
 
 const (
 	EXTERNAL_PORT                    = "Msvm_ExternalEthernetPort"

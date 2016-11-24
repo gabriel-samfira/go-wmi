@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	virt "github.com/gabriel-samfira/go-wmi/virt"
+	virt "github.com/gabriel-samfira/go-wmi/virt/network"
 	// wmi "github.com/gabriel-samfira/go-wmi/wmi"
 )
 
