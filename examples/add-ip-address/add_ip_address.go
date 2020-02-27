@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/gabriel-samfira/go-wmi/wmi"
+	"go-wmi/wmi"
 )
-
 
 func main() {
 	w, err := wmi.NewConnection(".", `Root\StandardCimv2`, nil, nil, nil, nil)

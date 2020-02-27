@@ -6,9 +6,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-	// "github.com/go-ole/go-ole"
-	// "github.com/go-ole/go-ole/oleutil"
-	// "github.com/gabriel-samfira/go-wmi/wmi"
 )
 
 // Location contains the parsed fields of a __PATH

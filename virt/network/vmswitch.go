@@ -6,8 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gabriel-samfira/go-wmi/wmi"
 	"github.com/go-ole/go-ole"
+
+	"go-wmi/wmi"
 )
 
 var mutex = sync.RWMutex{}

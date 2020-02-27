@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	virt "github.com/gabriel-samfira/go-wmi/virt/network"
+	virt "go-wmi/virt/network"
 )
 
 func main() {

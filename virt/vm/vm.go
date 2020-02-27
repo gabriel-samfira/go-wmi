@@ -1,6 +1,6 @@
 package vm
 
-import "github.com/gabriel-samfira/go-wmi/wmi"
+import "go-wmi/wmi"
 
 // NewVMManager returns a new Manager type
 func NewVMManager() (*Manager, error) {
