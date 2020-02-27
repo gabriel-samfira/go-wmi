@@ -256,11 +256,11 @@ func WaitForJob(jobPath string) error {
 		if err != nil {
 			return err
 		}
-		if jobData.JobState == WMI_JOB_STATE_RUNNING {
+		if jobData.JobState == JobStatusRunning {
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
-		if jobData.JobState != WMI_JOB_STATE_COMPLETED {
+		if jobData.JobState != JobStateCompleted {
 			return fmt.Errorf("Job failed: %s (%d)", jobData.ErrorDescription, jobData.ErrorCode)
 		}
 		break

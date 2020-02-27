@@ -186,7 +186,7 @@ func (s *VMSwitchManager) SetSwitchName(name string) error {
 		return fmt.Errorf("Failed to call ModifySystemSettings: %v", err)
 	}
 
-	if jobState.Value().(int32) == wmi.WMI_JOB_STATUS_STARTED {
+	if jobState.Value().(int32) == wmi.JobStatusStarted {
 		err := wmi.WaitForJob(jobPath.Value().(string))
 		if err != nil {
 			return err
@@ -207,7 +207,7 @@ func (s *VMSwitchManager) Delete() error {
 	if err != nil {
 		return fmt.Errorf("Failed to call DestroySystem: %v", err)
 	}
-	if jobState.Value().(int32) == wmi.WMI_JOB_STATUS_STARTED {
+	if jobState.Value().(int32) == wmi.JobStatusStarted {
 		err := wmi.WaitForJob(jobPath.Value().(string))
 		if err != nil {
 			return err
@@ -242,7 +242,7 @@ func (s *VMSwitchManager) Create() error {
 	if err != nil {
 		return fmt.Errorf("Failed to call DefineSystem: %v", err)
 	}
-	if jobState.Value().(int32) == wmi.WMI_JOB_STATUS_STARTED {
+	if jobState.Value().(int32) == wmi.JobStatusStarted {
 		err := wmi.WaitForJob(jobPath.Value().(string))
 		if err != nil {
 			return err
@@ -369,7 +369,7 @@ func (s *VMSwitchManager) RemoveExternalPort() error {
 	if err != nil {
 		return fmt.Errorf("Failed to call RemoveResourceSettings: %v", err)
 	}
-	if jobState.Value().(int32) == wmi.WMI_JOB_STATUS_STARTED {
+	if jobState.Value().(int32) == wmi.JobStatusStarted {
 		err := wmi.WaitForJob(jobPath.Value().(string))
 		if err != nil {
 			return err
@@ -451,7 +451,7 @@ func (s *VMSwitchManager) SetExternalPort(name string) error {
 		return fmt.Errorf("Failed to call AddResourceSettings: %v", err)
 	}
 
-	if jobState.Value().(int32) == wmi.WMI_JOB_STATUS_STARTED {
+	if jobState.Value().(int32) == wmi.JobStatusStarted {
 		err := wmi.WaitForJob(jobPath.Value().(string))
 		if err != nil {
 			return err
