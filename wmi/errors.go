@@ -2,4 +2,5 @@ package wmi
 
 import "errors"
 
-var NotFoundError = errors.New("Query returned empty set")
+// ErrNotFound is returned when the query yielded no results
+var ErrNotFound = errors.New("Query returned empty set")

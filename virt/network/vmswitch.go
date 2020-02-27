@@ -22,8 +22,8 @@ type vmswitchPorts struct {
 // VMSwitchManager manages a VM switch
 type VMSwitchManager struct {
 	con  *wmi.WMI
-	svc  *wmi.WMIResult
-	data *wmi.WMIResult
+	svc  *wmi.Result
+	data *wmi.Result
 
 	exists bool
 	name   string
@@ -43,7 +43,7 @@ func NewVMSwitchManager(name string) (*VMSwitchManager, error) {
 	}
 
 	// Get virtual switch management service
-	svc, err := w.GetOne(VMSwitchManagementService, []string{}, []wmi.WMIQuery{})
+	svc, err := w.GetOne(VMSwitchManagementService, []string{}, []wmi.Query{})
 	if err != nil {
 		return nil, err
 	}
@@ -66,9 +66,9 @@ func (s *VMSwitchManager) Name() string {
 	return s.name
 }
 
-func (s *VMSwitchManager) getVMSwitchManager(name string) (*wmi.WMIResult, bool, error) {
-	qParams := []wmi.WMIQuery{
-		&wmi.WMIAndQuery{wmi.QueryFields{Key: "ElementName", Value: name, Type: wmi.Equals}},
+func (s *VMSwitchManager) getVMSwitchManager(name string) (*wmi.Result, bool, error) {
+	qParams := []wmi.Query{
+		&wmi.AndQuery{wmi.QueryFields{Key: "ElementName", Value: name, Type: wmi.Equals}},
 	}
 	sw, err := s.con.Gwmi(VMSwitch, []string{}, qParams)
 	if err != nil {
@@ -121,9 +121,9 @@ func (s *VMSwitchManager) Release() {
 	s.con.Close()
 }
 
-func (s *VMSwitchManager) getExternalPort(name string) (*wmi.WMIResult, error) {
-	qParams := []wmi.WMIQuery{
-		&wmi.WMIAndQuery{
+func (s *VMSwitchManager) getExternalPort(name string) (*wmi.Result, error) {
+	qParams := []wmi.Query{
+		&wmi.AndQuery{
 			wmi.QueryFields{
 				Key:   "ElementName",
 				Value: name,
@@ -138,15 +138,15 @@ func (s *VMSwitchManager) getExternalPort(name string) (*wmi.WMIResult, error) {
 	return result, nil
 }
 
-func (s *VMSwitchManager) getDefaultSettingsData() (*wmi.WMIResult, error) {
-	qParams := []wmi.WMIQuery{
-		&wmi.WMIAndQuery{
+func (s *VMSwitchManager) getDefaultSettingsData() (*wmi.Result, error) {
+	qParams := []wmi.Query{
+		&wmi.AndQuery{
 			wmi.QueryFields{
 				Key:   "InstanceID",
 				Value: "%%\\\\Default",
 				Type:  wmi.Like},
 		},
-		&wmi.WMIAndQuery{
+		&wmi.AndQuery{
 			wmi.QueryFields{
 				Key:   "ResourceSubType",
 				Value: ETHConnResSubType,
@@ -164,7 +164,7 @@ func (s *VMSwitchManager) getDefaultSettingsData() (*wmi.WMIResult, error) {
 // SetSwitchName renames this VMSwitch
 func (s *VMSwitchManager) SetSwitchName(name string) error {
 	//Change switch name
-	var result *wmi.WMIResult
+	var result *wmi.Result
 	var err error
 	var text string
 
@@ -252,7 +252,7 @@ func (s *VMSwitchManager) Create() error {
 	return err
 }
 
-func (s *VMSwitchManager) getSwitchSettings() (*wmi.WMIResult, error) {
+func (s *VMSwitchManager) getSwitchSettings() (*wmi.Result, error) {
 	if s.Exists() == false {
 		return nil, fmt.Errorf("Switch %s is not yet created", s.name)
 	}
@@ -313,7 +313,7 @@ func (s *VMSwitchManager) getSwitchPorts() ([]vmswitchPorts, error) {
 		}
 		defer location.Close()
 
-		extPort, err := location.GetWMIResult()
+		extPort, err := location.GetResult()
 		if err != nil {
 			return []vmswitchPorts{}, err
 		}
@@ -347,8 +347,8 @@ func (s *VMSwitchManager) RemoveExternalPort() error {
 		if port.location.Class != ComputerSystem && port.location.Class != ExternalPort {
 			continue
 		}
-		qParams := []wmi.WMIQuery{
-			&wmi.WMIAndQuery{wmi.QueryFields{Key: "InstanceID", Value: port.InstanceID(), Type: wmi.Equals}},
+		qParams := []wmi.Query{
+			&wmi.AndQuery{wmi.QueryFields{Key: "InstanceID", Value: port.InstanceID(), Type: wmi.Equals}},
 		}
 		settings, err := s.con.GetOne(CIMResAllocSettingDataClass, []string{}, qParams)
 		if err != nil {
@@ -378,7 +378,7 @@ func (s *VMSwitchManager) RemoveExternalPort() error {
 	return nil
 }
 
-func (s *VMSwitchManager) getExternalPortSettingsData(name string) (*wmi.WMIResult, error) {
+func (s *VMSwitchManager) getExternalPortSettingsData(name string) (*wmi.Result, error) {
 	extPort, err := s.getExternalPort(name)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get external port: %v", err)

@@ -9,15 +9,18 @@ import (
 	"github.com/go-ole/go-ole/oleutil"
 )
 
-type WMIQueryType string
-type SetParams interface{}
+// QueryType holds the condition of the query
+type QueryType string
 
 var (
-	Equals WMIQueryType = "="
-	Like   WMIQueryType = " Like "
-	mutex               = sync.RWMutex{}
+	// Equals is the qeual conditional for a query
+	Equals QueryType = "="
+	// Like is the pattern match conditional of a query
+	Like  QueryType = " Like "
+	mutex           = sync.RWMutex{}
 )
 
+// WMI represents a WMI connection object
 type WMI struct {
 	rawSvc     *ole.VARIANT
 	unknown    *ole.IUnknown
@@ -30,20 +33,23 @@ type WMI struct {
 	params []interface{}
 }
 
-type WMIResult struct {
+// Result holds the raw WMI result of a query
+type Result struct {
 	rawRes *ole.VARIANT
 
 	err error
 }
 
-type WMIQuery interface {
+// Query is an interface that defines a query type
+type Query interface {
 	AsString(partialQuery string) (string, error)
 }
 
+// QueryFields is a helper structure that enables us to build queries
 type QueryFields struct {
 	Key   string
 	Value interface{}
-	Type  WMIQueryType
+	Type  QueryType
 }
 
 func (w *QueryFields) sanitizeValue(val interface{}) (string, error) {
@@ -81,39 +87,46 @@ func (w *QueryFields) buildQuery(partialQuery, cond string) (string, error) {
 	return partialQuery, nil
 }
 
-type WMIAndQuery struct {
+// AndQuery defines an "AND" conditional query.
+type AndQuery struct {
 	QueryFields
 }
 
-func (w *WMIAndQuery) AsString(partialQuery string) (string, error) {
+// AsString implements the Query interface
+func (w *AndQuery) AsString(partialQuery string) (string, error) {
 	return w.buildQuery(partialQuery, "AND")
 }
 
-type WMIOrQuery struct {
+// OrQuery defines an "OR" conditional query
+type OrQuery struct {
 	QueryFields
 }
 
-func (w *WMIOrQuery) AsString(partialQuery string) (string, error) {
+// AsString implements the Query interface
+func (w *OrQuery) AsString(partialQuery string) (string, error) {
 	return w.buildQuery(partialQuery, "OR")
 }
 
-func (r *WMIResult) setError(err error) {
+func (r *Result) setError(err error) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	r.err = err
 }
 
-func (r *WMIResult) Error() error {
+func (r *Result) Error() error {
 	mutex.Lock()
 	defer mutex.Unlock()
 	return r.err
 }
 
-func (r *WMIResult) Raw() *ole.VARIANT {
+// Raw returns the raw WMI result
+func (r *Result) Raw() *ole.VARIANT {
 	return r.rawRes
 }
 
-func (r *WMIResult) ItemAtIndex(i int) (*WMIResult, error) {
+// ItemAtIndex returns the result of the ItemIndex WMI call on a
+// raw WMI result object
+func (r *Result) ItemAtIndex(i int) (*Result, error) {
 	res := r.rawRes.ToIDispatch()
 	if res == nil {
 		return nil, fmt.Errorf("Object is not callable")
@@ -125,30 +138,32 @@ func (r *WMIResult) ItemAtIndex(i int) (*WMIResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	wmiRes := &WMIResult{
+	wmiRes := &Result{
 		rawRes: itemRaw,
 	}
 	return wmiRes, nil
 }
 
-func (r *WMIResult) Elements() ([]*WMIResult, error) {
+// Elements returns an array of WMI results
+func (r *Result) Elements() ([]*Result, error) {
 	var err error
 	var count int
 	count, err = r.Count()
 	if err != nil {
-		return []*WMIResult{}, err
+		return []*Result{}, err
 	}
-	results := make([]*WMIResult, count)
+	results := make([]*Result, count)
 	for i := 0; i < count; i++ {
 		results[i], err = r.ItemAtIndex(i)
 		if err != nil {
-			return []*WMIResult{}, err
+			return []*Result{}, err
 		}
 	}
 	return results, nil
 }
 
-func (r *WMIResult) GetProperty(property string) (*WMIResult, error) {
+// GetProperty will return a *Result holding a given property
+func (r *Result) GetProperty(property string) (*Result, error) {
 	res := r.rawRes.ToIDispatch()
 	if res == nil {
 		return nil, fmt.Errorf("Object is not callable")
@@ -160,13 +175,14 @@ func (r *WMIResult) GetProperty(property string) (*WMIResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	wmiRes := &WMIResult{
+	wmiRes := &Result{
 		rawRes: rawVal,
 	}
 	return wmiRes, nil
 }
 
-func (r *WMIResult) Get(method string, params ...interface{}) (*WMIResult, error) {
+// Get will execute a method on the WMI object held in *Result, with the given params
+func (r *Result) Get(method string, params ...interface{}) (*Result, error) {
 	res := r.rawRes.ToIDispatch()
 	if res == nil {
 		return nil, fmt.Errorf("Object is not callable")
@@ -178,13 +194,14 @@ func (r *WMIResult) Get(method string, params ...interface{}) (*WMIResult, error
 	if err != nil {
 		return nil, err
 	}
-	wmiRes := &WMIResult{
+	wmiRes := &Result{
 		rawRes: rawSvc,
 	}
 	return wmiRes, nil
 }
 
-func (r *WMIResult) Path() (string, error) {
+// Path returns the Path element of this WMI object
+func (r *Result) Path() (string, error) {
 	p, err := r.GetProperty("path_")
 	if err != nil {
 		return "", err
@@ -200,7 +217,8 @@ func (r *WMIResult) Path() (string, error) {
 	return val.(string), nil
 }
 
-func (r *WMIResult) Set(property string, params ...interface{}) error {
+// Set will set the parameters of a property
+func (r *Result) Set(property string, params ...interface{}) error {
 	res := r.rawRes.ToIDispatch()
 	if res == nil {
 		return fmt.Errorf("Object is not callable")
@@ -211,7 +229,8 @@ func (r *WMIResult) Set(property string, params ...interface{}) error {
 	return err
 }
 
-func (r *WMIResult) GetText(i int) (string, error) {
+// GetText returns an XML representation of an object or instance
+func (r *Result) GetText(i int) (string, error) {
 	res := r.rawRes.ToIDispatch()
 	if res == nil {
 		return "", fmt.Errorf("Object is not callable")
@@ -225,21 +244,26 @@ func (r *WMIResult) GetText(i int) (string, error) {
 	return t.ToString(), nil
 }
 
-func (r *WMIResult) Value() interface{} {
+// Value returns the value of a result as an interface. It is the job
+// of the caller to cast it to it's proper type
+func (r *Result) Value() interface{} {
 	if r == nil || r.rawRes == nil {
 		return ""
 	}
 	return r.rawRes.Value()
 }
 
-func (r *WMIResult) ToArray() *ole.SafeArrayConversion {
+// ToArray returna a *ole.SafeArrayConversion from the WMI result.
+// This should probably not be exposed directly.
+func (r *Result) ToArray() *ole.SafeArrayConversion {
 	if r == nil || r.rawRes == nil {
 		return nil
 	}
 	return r.rawRes.ToArray()
 }
 
-func (r *WMIResult) Count() (int, error) {
+// Count returns the total number of results returned by the query.
+func (r *Result) Count() (int, error) {
 	res := r.rawRes.ToIDispatch()
 	if res == nil {
 		return 0, nil
@@ -251,10 +275,12 @@ func (r *WMIResult) Count() (int, error) {
 	return int(countVar.Val), nil
 }
 
-func NewWMIObject(path string) (*WMIResult, error) {
+// NewWMIObject returns a new *Result from a path
+func NewWMIObject(path string) (*Result, error) {
 	return nil, nil
 }
 
+// NewConnection returns a new *WMI connection, given the parameters
 func NewConnection(params ...interface{}) (*WMI, error) {
 	err := ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED)
 	if err != nil {
@@ -289,6 +315,7 @@ func NewConnection(params ...interface{}) (*WMI, error) {
 	return w, nil
 }
 
+// Close will close the WMI connection and release all resources.
 func (w *WMI) Close() {
 	w.wmi.Release()
 	w.qInterface.Release()
@@ -296,7 +323,7 @@ func (w *WMI) Close() {
 	ole.CoUninitialize()
 }
 
-func (w *WMI) getQueryParams(qParams []WMIQuery) (string, error) {
+func (w *WMI) getQueryParams(qParams []Query) (string, error) {
 	if len(qParams) == 0 {
 		return "", nil
 	}
@@ -311,29 +338,32 @@ func (w *WMI) getQueryParams(qParams []WMIQuery) (string, error) {
 	return ret, nil
 }
 
-func (w *WMI) Get(params ...interface{}) (*WMIResult, error) {
+// Get returns a new *Result, given the params
+func (w *WMI) Get(params ...interface{}) (*Result, error) {
 	rawSvc, err := oleutil.CallMethod(w.wmi, "Get", params...)
 	if err != nil {
 		return nil, err
 	}
-	ret := &WMIResult{
+	ret := &Result{
 		rawRes: rawSvc,
 	}
 	return ret, nil
 }
 
-func (w *WMI) ExecMethod(params ...interface{}) (*WMIResult, error) {
+// ExecMethod wraps the WMI ExecMethod call and returns a *Result
+func (w *WMI) ExecMethod(params ...interface{}) (*Result, error) {
 	rawSvc, err := oleutil.CallMethod(w.wmi, "ExecMethod", params...)
 	if err != nil {
 		return nil, err
 	}
-	ret := &WMIResult{
+	ret := &Result{
 		rawRes: rawSvc,
 	}
 	return ret, nil
 }
 
-func (w *WMI) Gwmi(resource string, fields []string, qParams []WMIQuery) (*WMIResult, error) {
+// Gwmi makes a WMI query and returns a *Result
+func (w *WMI) Gwmi(resource string, fields []string, qParams []Query) (*Result, error) {
 	n := "*"
 	if len(fields) > 0 {
 		n = strings.Join(fields, ",")
@@ -349,13 +379,14 @@ func (w *WMI) Gwmi(resource string, fields []string, qParams []WMIQuery) (*WMIRe
 	if err != nil {
 		return nil, err
 	}
-	wmiRes := &WMIResult{
+	wmiRes := &Result{
 		rawRes: resultRaw,
 	}
 	return wmiRes, nil
 }
 
-func (w *WMI) GetOne(resource string, fields []string, qParams []WMIQuery) (*WMIResult, error) {
+// GetOne returns the first result from a query response.
+func (w *WMI) GetOne(resource string, fields []string, qParams []Query) (*Result, error) {
 	res, err := w.Gwmi(resource, fields, qParams)
 	if err != nil {
 		return nil, err
@@ -365,7 +396,7 @@ func (w *WMI) GetOne(resource string, fields []string, qParams []WMIQuery) (*WMI
 		return nil, err
 	}
 	if c == 0 {
-		return nil, NotFoundError
+		return nil, ErrNotFound
 	}
 	item, err := res.ItemAtIndex(0)
 	if err != nil {

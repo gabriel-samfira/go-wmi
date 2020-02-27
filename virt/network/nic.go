@@ -171,8 +171,8 @@ type NetAdapter struct {
 	HigherLayerInterfaceIndices                      []int32
 	AdminLocked                                      bool
 
-	cimObject *wmi.WMIResult `tag:"ignore"`
-	lock      sync.Mutex     `tag:"ignore"`
+	cimObject *wmi.Result `tag:"ignore"`
+	lock      sync.Mutex  `tag:"ignore"`
 }
 
 // GetIPAddresses returns an array of NetIPAddress for this adapter
@@ -185,7 +185,7 @@ func (n *NetAdapter) callFunction(method string, params ...interface{}) (*NetAda
 		return nil, nil
 	}
 
-	var res *wmi.WMIResult
+	var res *wmi.Result
 	var err error
 	res, err = n.cimObject.Get(method, params...)
 	if err != nil {
@@ -250,11 +250,11 @@ func GetNetworkAdapters(name ...string) ([]NetAdapter, error) {
 		return nil, err
 	}
 
-	q := []wmi.WMIQuery{}
+	q := []wmi.Query{}
 	if len(name) > 0 {
 		for _, val := range name {
 			q = append(q,
-				&wmi.WMIOrQuery{
+				&wmi.OrQuery{
 					wmi.QueryFields{
 						Key:   "Name",
 						Value: val,
@@ -291,10 +291,10 @@ func GetNetIPAddresses(index int) ([]NetIPAddress, error) {
 	}
 	defer con.Close()
 
-	q := []wmi.WMIQuery{}
+	q := []wmi.Query{}
 	if index != 0 {
-		q = []wmi.WMIQuery{
-			&wmi.WMIAndQuery{
+		q = []wmi.Query{
+			&wmi.AndQuery{
 				wmi.QueryFields{
 					Key:   "InterfaceIndex",
 					Value: index,

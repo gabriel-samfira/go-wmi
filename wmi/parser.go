@@ -32,11 +32,13 @@ var requiredFields = []string{
 	"class",
 }
 
+// Close will close the WMI connection for this location
 func (w *Location) Close() {
 	w.conn.Close()
 }
 
-func (w *Location) GetWMIResult() (*WMIResult, error) {
+// GetResult wil return a Result for this Location
+func (w *Location) GetResult() (*Result, error) {
 	result, err := w.conn.GetOne(w.Class, []string{}, w.QueryParams())
 	if err != nil {
 		return nil, err
@@ -79,16 +81,19 @@ func parseParams(params string) (map[string]string, error) {
 	return result, nil
 }
 
-func (p *Location) QueryParams() []WMIQuery {
-	q := []WMIQuery{}
-	if len(p.Params) > 0 {
-		for key, val := range p.Params {
-			q = append(q, &WMIAndQuery{QueryFields{Key: key, Type: Equals, Value: val}})
+// QueryParams returns a []Query from the params present in the
+// location string
+func (w *Location) QueryParams() []Query {
+	q := []Query{}
+	if len(w.Params) > 0 {
+		for key, val := range w.Params {
+			q = append(q, &AndQuery{QueryFields{Key: key, Type: Equals, Value: val}})
 		}
 	}
 	return q
 }
 
+// NewLocation returns a *Location object
 func NewLocation(path string) (*Location, error) {
 	result := parsePath(path)
 	err := validateResult(result)
@@ -129,9 +134,9 @@ type JobState struct {
 }
 
 // PopulateStruct populates the fields of the supplied struct
-// with values received form a WMIResult. Care must be taken when
+// with values received form a Result. Care must be taken when
 // declaring the struct. It must match the types returned by WMI.
-func PopulateStruct(j *WMIResult, s interface{}) (err error) {
+func PopulateStruct(j *Result, s interface{}) (err error) {
 	var name string
 	var fieldType interface{}
 	defer func() {
@@ -236,7 +241,7 @@ func NewJobState(path string) (JobState, error) {
 		return JobState{}, fmt.Errorf("Path is not a valid ConcreteJob. Got: %s", conn.Class)
 	}
 
-	jobData, err := conn.GetWMIResult()
+	jobData, err := conn.GetResult()
 	if err != nil {
 		return JobState{}, err
 	}

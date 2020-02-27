@@ -7,7 +7,6 @@ import (
 	"github.com/gabriel-samfira/go-wmi/wmi"
 )
 
-
 func main() {
 	w, err := wmi.NewConnection(".", `Root\StandardCimv2`, nil, nil, nil, nil)
 	if err != nil {
@@ -18,8 +17,8 @@ func main() {
 	// AddressFamily:
 	// 	2 - IPv4
 	//  23 - IPv6
-	qParams := []wmi.WMIQuery{
-		&wmi.WMIAndQuery{wmi.QueryFields{Key: "AddressFamily", Value: 2, Type: wmi.Equals}},
+	qParams := []wmi.Query{
+		&wmi.AndQuery{wmi.QueryFields{Key: "AddressFamily", Value: 2, Type: wmi.Equals}},
 	}
 	// See documentation on MSFT_NetIPAddress class at: https://msdn.microsoft.com/en-us/library/hh872425(v=vs.85).aspx
 	netip, err := w.Gwmi("MSFT_NetIPAddress", []string{}, qParams)
