@@ -6,11 +6,8 @@ import (
 	"sync"
 	"time"
 
-	// "unsafe"
-
 	"github.com/gabriel-samfira/go-wmi/wmi"
 	"github.com/go-ole/go-ole"
-	// "github.com/go-ole/go-ole/oleutil"
 )
 
 var mutex = sync.RWMutex{}
