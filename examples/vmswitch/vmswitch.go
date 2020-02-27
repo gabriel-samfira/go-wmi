@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -9,17 +10,24 @@ import (
 )
 
 func main() {
-	swname := "br100"
+	adapterName := flag.String("nic", "", "nic to attach to VMswitch")
+	switchName := flag.String("vmswitch", "br100", "VM switch name")
+	flag.Parse()
 
-	vmsw, err := virt.NewVMSwitchManager(swname)
+	if *adapterName == "" {
+		fmt.Println("missing net adapter name")
+		os.Exit(1)
+	}
+
+	vmsw, err := virt.NewVMSwitchManager(*switchName)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
-	name := "Intel(R) PRO/1000 MT Network Connection #2"
+	name := *adapterName
 
-	fmt.Printf("Creating %s\r\n", swname)
+	fmt.Printf("Creating %s\r\n", *switchName)
 	if err := vmsw.Create(); err != nil {
 		fmt.Println(err)
 		return

@@ -1,8 +1,0 @@
-{
-    "comment": "",
-    "package": [
-        {
-            "path": "github.com/go-ole/go-ole"
-        }
-    ]
-}

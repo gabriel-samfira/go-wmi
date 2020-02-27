@@ -119,13 +119,13 @@ type JobState struct {
 	Name             string
 	Description      string
 	ElementName      string
-	ErrorCode        int
+	ErrorCode        int32
 	ErrorDescription string
 	InstanceID       string
-	JobRunTimes      int
-	JobState         int
+	JobRunTimes      int32
+	JobState         int32
 	JobStatus        string
-	JobType          int
+	JobType          int32
 }
 
 // PopulateStruct populates the fields of the supplied struct
@@ -213,7 +213,7 @@ func PopulateStruct(j *WMIResult, s interface{}) (err error) {
 
 		v := reflect.ValueOf(fieldValue)
 		if v.Kind() != field.Kind() {
-			return fmt.Errorf("Invalid type returned by query for field %s: %v", name, v.Kind())
+			return fmt.Errorf("Invalid type returned by query for field %s (%v): %v", name, v.Kind(), field.Kind())
 		}
 		if field.CanSet() {
 			field.Set(v)
