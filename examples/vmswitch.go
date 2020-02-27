@@ -11,7 +11,7 @@ import (
 func main() {
 	swname := "br100"
 
-	vmsw, err := virt.NewVmSwitch(swname)
+	vmsw, err := virt.NewVMSwitchManager(swname)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -40,7 +40,7 @@ func main() {
 	}
 
 	fmt.Printf("Removing ports from %s\r\n", vmsw.Name())
-	if err := vmsw.RemovePort(); err != nil {
+	if err := vmsw.RemoveExternalPort(); err != nil {
 		fmt.Println(err)
 		return
 	}

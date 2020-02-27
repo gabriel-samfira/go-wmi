@@ -1,16 +1,20 @@
 package network
 
 import (
-	"fmt"
-	"reflect"
 	"sync"
 
 	"github.com/gabriel-samfira/go-wmi/wmi"
 )
 
+// PowerManagementCapability represents an adapters power management
+// capabilities.
 type PowerManagementCapability uint16
+
+// NetAdapterState is the plug and play state of the network adapter.
 type NetAdapterState int32
 
+// These are the values for the PnP adapter states. Details at:
+// https://docs.microsoft.com/en-us/previous-versions/windows/desktop/legacy/hh968170(v%3Dvs.85)
 const (
 	AdapterUnknown NetAdapterState = iota
 	AdapterPresent
@@ -18,6 +22,8 @@ const (
 	AdapterDisabled
 )
 
+// Power management capabilities for net adapters. For details see:
+// https://docs.microsoft.com/en-us/previous-versions/windows/desktop/legacy/hh968170(v%3Dvs.85)
 const (
 	Unknown PowerManagementCapability = iota
 	NotSupported
@@ -29,6 +35,8 @@ const (
 	TimedPowerOn
 )
 
+// NetIPAddress is a representation of the MSFT_NetIPAddress cim class:
+// https://docs.microsoft.com/en-us/previous-versions/windows/desktop/legacy/hh872425(v%3Dvs.85)
 type NetIPAddress struct {
 	InstanceID              string
 	Caption                 string
@@ -78,7 +86,7 @@ type NetIPAddress struct {
 	SkipAsSource            bool
 }
 
-//NetAdapter is the equivalent of MSFT_NetAdapter. More info here:
+// NetAdapter is the equivalent of MSFT_NetAdapter. More info here:
 // https://msdn.microsoft.com/en-us/library/hh968170%28v=vs.85%29.aspx?f=255&MSPPError=-2147217396
 type NetAdapter struct {
 	Caption                                          string
@@ -116,7 +124,7 @@ type NetAdapter struct {
 	InterfaceDescription                             string
 	InterfaceName                                    string
 	NetLuid                                          string
-	InterfaceGuid                                    string
+	InterfaceGUID                                    string
 	InterfaceIndex                                   int32
 	DeviceName                                       string
 	NetLuidIndex                                     int32
@@ -159,7 +167,7 @@ type NetAdapter struct {
 	PnPDeviceID                                      string
 	DriverProvider                                   string
 	ComponentID                                      string
-	LowerLayerInterfaceIndices                       []uint32
+	LowerLayerInterfaceIndices                       []int32
 	HigherLayerInterfaceIndices                      []int32
 	AdminLocked                                      bool
 
@@ -167,6 +175,7 @@ type NetAdapter struct {
 	lock      sync.Mutex     `tag:"ignore"`
 }
 
+// GetIPAddresses returns an array of NetIPAddress for this adapter
 func (n *NetAdapter) GetIPAddresses() ([]NetIPAddress, error) {
 	return GetNetIPAddresses(int(n.InterfaceIndex))
 }
@@ -183,10 +192,13 @@ func (n *NetAdapter) callFunction(method string, params ...interface{}) (*NetAda
 		return nil, err
 	}
 	data := NetAdapter{}
-	populateStruct(res, &data)
+	if err := wmi.PopulateStruct(res, &data); err != nil {
+		return nil, err
+	}
 	return &data, nil
 }
 
+// Disable will disable this net adapter
 func (n *NetAdapter) Disable() error {
 	n.lock.Lock()
 	defer n.lock.Unlock()
@@ -201,6 +213,7 @@ func (n *NetAdapter) Disable() error {
 	return nil
 }
 
+// Enable will enable this net adapter
 func (n *NetAdapter) Enable() error {
 	n.lock.Lock()
 	defer n.lock.Unlock()
@@ -215,6 +228,7 @@ func (n *NetAdapter) Enable() error {
 	return nil
 }
 
+// Rename will set a new name to this net adapter
 func (n *NetAdapter) Rename(name string) error {
 	n.lock.Lock()
 	defer n.lock.Unlock()
@@ -229,105 +243,26 @@ func (n *NetAdapter) Rename(name string) error {
 	return nil
 }
 
-func populateStruct(j *wmi.WMIResult, s interface{}) error {
-	valuePtr := reflect.ValueOf(s)
-	elem := valuePtr.Elem()
-	typeOfElem := elem.Type()
-
-	for i := 0; i < elem.NumField(); i++ {
-		field := elem.Field(i)
-		if typeOfElem.Field(i).Tag.Get("tag") == "ignore" {
-			continue
-		}
-		name := typeOfElem.Field(i).Name
-
-		res, err := j.GetProperty(name)
-		if err != nil {
-			return fmt.Errorf("Failed to get property %s: %s", name, err)
-		}
-
-		wmiFieldValue := res.Value()
-		if wmiFieldValue == nil {
-			continue
-		}
-
-		var fieldValue interface{}
-		switch field.Interface().(type) {
-		case []uint16:
-			if c := res.ToArray(); c != nil {
-				val := c.ToValueArray()
-				asString := make([]uint16, len(val))
-				for k, v := range val {
-					asString[k] = v.(uint16)
-				}
-				fieldValue = asString
-			}
-		case []string:
-			if c := res.ToArray(); c != nil {
-				val := c.ToValueArray()
-				asString := make([]string, len(val))
-				for k, v := range val {
-					asString[k] = v.(string)
-				}
-				fieldValue = asString
-			}
-		case []uint32:
-			if c := res.ToArray(); c != nil {
-				val := c.ToValueArray()
-				asString := make([]uint32, len(val))
-				for k, v := range val {
-					asString[k] = v.(uint32)
-				}
-				fieldValue = asString
-			}
-		case []int32:
-			if c := res.ToArray(); c != nil {
-				val := c.ToValueArray()
-				asString := make([]int32, len(val))
-				for k, v := range val {
-					asString[k] = v.(int32)
-				}
-				fieldValue = asString
-			}
-		case []int64:
-			if c := res.ToArray(); c != nil {
-				val := c.ToValueArray()
-				asString := make([]int64, len(val))
-				for k, v := range val {
-					asString[k] = v.(int64)
-				}
-				fieldValue = asString
-			}
-		default:
-			fieldValue = wmiFieldValue
-		}
-
-		v := reflect.ValueOf(fieldValue)
-		if v.Kind() != field.Kind() {
-			return fmt.Errorf("Invalid type returned by query for field %s: %v", name, v.Kind())
-		}
-		if field.CanSet() {
-			field.Set(v)
-		}
+// GetNetworkAdapters returns a list of network adapters
+func GetNetworkAdapters(name ...string) ([]NetAdapter, error) {
+	con, err := wmi.NewStandardCimV2Connection()
+	if err != nil {
+		return nil, err
 	}
-	return nil
-}
-
-func GetNetworkAdapters(name string) ([]NetAdapter, error) {
-	con, err := NewStandardCimV2Connection()
 
 	q := []wmi.WMIQuery{}
-	if name != "" {
-		q = []wmi.WMIQuery{
-			&wmi.WMIAndQuery{
-				wmi.QueryFields{
-					Key:   "Name",
-					Value: name,
-					Type:  wmi.Equals},
-			},
+	if len(name) > 0 {
+		for _, val := range name {
+			q = append(q,
+				&wmi.WMIOrQuery{
+					wmi.QueryFields{
+						Key:   "Name",
+						Value: val,
+						Type:  wmi.Equals},
+				})
 		}
 	}
-	result, err := con.Gwmi(NET_ADAPTER_CLASS, []string{}, q)
+	result, err := con.Gwmi(NetAdapterClass, []string{}, q)
 	if err != nil {
 		return []NetAdapter{}, err
 	}
@@ -338,7 +273,7 @@ func GetNetworkAdapters(name string) ([]NetAdapter, error) {
 	ret := make([]NetAdapter, len(adapters))
 	for index, adapter := range adapters {
 		s := &NetAdapter{}
-		if err := populateStruct(adapter, s); err != nil {
+		if err := wmi.PopulateStruct(adapter, s); err != nil {
 			return []NetAdapter{}, err
 		}
 		s.cimObject = adapter
@@ -347,8 +282,10 @@ func GetNetworkAdapters(name string) ([]NetAdapter, error) {
 	return ret, nil
 }
 
+// GetNetIPAddresses returns IP addresses for a particular
+// network adapter.
 func GetNetIPAddresses(index int) ([]NetIPAddress, error) {
-	con, err := NewStandardCimV2Connection()
+	con, err := wmi.NewStandardCimV2Connection()
 	if err != nil {
 		return []NetIPAddress{}, err
 	}
@@ -376,15 +313,10 @@ func GetNetIPAddresses(index int) ([]NetIPAddress, error) {
 	ret := make([]NetIPAddress, len(ips))
 	for index, ip := range ips {
 		s := &NetIPAddress{}
-		if err := populateStruct(ip, s); err != nil {
+		if err := wmi.PopulateStruct(ip, s); err != nil {
 			return []NetIPAddress{}, err
 		}
 		ret[index] = *s
 	}
 	return ret, nil
-}
-
-func NewStandardCimV2Connection() (w *wmi.WMI, err error) {
-	w, err = wmi.NewConnection(".", `Root\StandardCimv2`)
-	return
 }

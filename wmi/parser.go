@@ -11,8 +11,8 @@ import (
 	// "github.com/gabriel-samfira/go-wmi/wmi"
 )
 
-// WMILocation contains the parsed fields of a __PATH
-type WMILocation struct {
+// Location contains the parsed fields of a __PATH
+type Location struct {
 	// Server represents the server on which this query should be run
 	Server string
 	// Namespace represents the namespace in which to run the query
@@ -32,11 +32,11 @@ var requiredFields = []string{
 	"class",
 }
 
-func (w *WMILocation) Close() {
+func (w *Location) Close() {
 	w.conn.Close()
 }
 
-func (w *WMILocation) GetWMIResult() (*WMIResult, error) {
+func (w *Location) GetWMIResult() (*WMIResult, error) {
 	result, err := w.conn.GetOne(w.Class, []string{}, w.QueryParams())
 	if err != nil {
 		return nil, err
@@ -79,7 +79,7 @@ func parseParams(params string) (map[string]string, error) {
 	return result, nil
 }
 
-func (p *WMILocation) QueryParams() []WMIQuery {
+func (p *Location) QueryParams() []WMIQuery {
 	q := []WMIQuery{}
 	if len(p.Params) > 0 {
 		for key, val := range p.Params {
@@ -89,7 +89,7 @@ func (p *WMILocation) QueryParams() []WMIQuery {
 	return q
 }
 
-func NewWMILocation(path string) (*WMILocation, error) {
+func NewLocation(path string) (*Location, error) {
 	result := parsePath(path)
 	err := validateResult(result)
 	if err != nil {
@@ -103,7 +103,7 @@ func NewWMILocation(path string) (*WMILocation, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &WMILocation{
+	return &Location{
 		Server:    result["server"],
 		Namespace: result["namespace"],
 		Class:     result["class"],
@@ -128,17 +128,28 @@ type JobState struct {
 	JobType          int
 }
 
-// populateStruct only works for types that define fields of type string or int.
-// it will populate the go type with values found in WMIResult
-func populateStruct(j *WMIResult, s interface{}) error {
+// PopulateStruct populates the fields of the supplied struct
+// with values received form a WMIResult. Care must be taken when
+// declaring the struct. It must match the types returned by WMI.
+func PopulateStruct(j *WMIResult, s interface{}) (err error) {
+	var name string
+	var fieldType interface{}
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("Invalid field type (%T) for %s: %s", fieldType, name, r)
+		}
+	}()
 	valuePtr := reflect.ValueOf(s)
 	elem := valuePtr.Elem()
 	typeOfElem := elem.Type()
 
 	for i := 0; i < elem.NumField(); i++ {
 		field := elem.Field(i)
-		name := typeOfElem.Field(i).Name
-
+		if typeOfElem.Field(i).Tag.Get("tag") == "ignore" {
+			continue
+		}
+		name = typeOfElem.Field(i).Name
+		fieldType = field.Interface()
 		res, err := j.GetProperty(name)
 		if err != nil {
 			return fmt.Errorf("Failed to get property %s: %s", name, err)
@@ -149,7 +160,58 @@ func populateStruct(j *WMIResult, s interface{}) error {
 			continue
 		}
 
-		v := reflect.ValueOf(wmiFieldValue)
+		var fieldValue interface{}
+		switch field.Interface().(type) {
+		case []uint16:
+			if c := res.ToArray(); c != nil {
+				val := c.ToValueArray()
+				asString := make([]uint16, len(val))
+				for k, v := range val {
+					asString[k] = v.(uint16)
+				}
+				fieldValue = asString
+			}
+		case []string:
+			if c := res.ToArray(); c != nil {
+				val := c.ToValueArray()
+				asString := make([]string, len(val))
+				for k, v := range val {
+					asString[k] = v.(string)
+				}
+				fieldValue = asString
+			}
+		case []uint32:
+			if c := res.ToArray(); c != nil {
+				val := c.ToValueArray()
+				asString := make([]uint32, len(val))
+				for k, v := range val {
+					asString[k] = v.(uint32)
+				}
+				fieldValue = asString
+			}
+		case []int32:
+			if c := res.ToArray(); c != nil {
+				val := c.ToValueArray()
+				asString := make([]int32, len(val))
+				for k, v := range val {
+					asString[k] = v.(int32)
+				}
+				fieldValue = asString
+			}
+		case []int64:
+			if c := res.ToArray(); c != nil {
+				val := c.ToValueArray()
+				asString := make([]int64, len(val))
+				for k, v := range val {
+					asString[k] = v.(int64)
+				}
+				fieldValue = asString
+			}
+		default:
+			fieldValue = wmiFieldValue
+		}
+
+		v := reflect.ValueOf(fieldValue)
 		if v.Kind() != field.Kind() {
 			return fmt.Errorf("Invalid type returned by query for field %s: %v", name, v.Kind())
 		}
@@ -160,8 +222,9 @@ func populateStruct(j *WMIResult, s interface{}) error {
 	return nil
 }
 
+// NewJobState returns a new Jobstate, given a path
 func NewJobState(path string) (JobState, error) {
-	conn, err := NewWMILocation(path)
+	conn, err := NewLocation(path)
 	if err != nil {
 		return JobState{}, err
 	}
@@ -179,13 +242,14 @@ func NewJobState(path string) (JobState, error) {
 	}
 
 	j := JobState{}
-	err = populateStruct(jobData, &j)
+	err = PopulateStruct(jobData, &j)
 	if err != nil {
 		return JobState{}, err
 	}
 	return j, nil
 }
 
+// WaitForJob will wait for a WMI job to complete
 func WaitForJob(jobPath string) error {
 	for {
 		jobData, err := NewJobState(jobPath)

@@ -2,13 +2,23 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
+	"strings"
 
 	virt "github.com/gabriel-samfira/go-wmi/virt/network"
 )
 
 func main() {
-	adapters, err := virt.GetNetworkAdapters("Ethernet1")
+	adapterNames := flag.String("nics", "", "adapter name to get info for")
+	flag.Parse()
+
+	var names []string
+	if *adapterNames != "" {
+		names = strings.Split(*adapterNames, ",")
+	}
+	adapters, err := virt.GetNetworkAdapters(names...)
+
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -20,18 +30,19 @@ func main() {
 	}
 	fmt.Println(string(m), err)
 	if len(adapters) > 0 {
-		a := adapters[0]
-		v, err := a.GetIPAddresses()
-		if err != nil {
-			fmt.Println(err)
-			return
+		for _, nic := range adapters {
+			v, err := nic.GetIPAddresses()
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			// err = nic.Enable()
+			// if err != nil {
+			// 	fmt.Println(err)
+			// 	return
+			// }
+			n, err := json.MarshalIndent(&v, "", "  ")
+			fmt.Println(string(n), err)
 		}
-		err = a.Enable()
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		n, err := json.MarshalIndent(&v, "", "  ")
-		fmt.Println(string(n), err)
 	}
 }

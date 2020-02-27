@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+
 	// "unsafe"
 
 	"github.com/gabriel-samfira/go-wmi/wmi"
@@ -18,10 +19,11 @@ type vmswitchPorts struct {
 	name         string
 	hostResource string
 	instanceID   string
-	location     *wmi.WMILocation
+	location     *wmi.Location
 }
 
-type VmSwitch struct {
+// VMSwitchManager manages a VM switch
+type VMSwitchManager struct {
 	con  *wmi.WMI
 	svc  *wmi.WMIResult
 	data *wmi.WMIResult
@@ -34,22 +36,22 @@ func (v *vmswitchPorts) InstanceID() string {
 	return strings.Replace(v.instanceID, `\`, `\\`, -1)
 }
 
-// NewVmSwitch returns a new VmSwitch type
-// If the switch exists, this will return a VmSwitch type populated with
+// NewVMSwitchManager returns a new VMSwitchManager type
+// If the switch exists, this will return a VMSwitchManager type populated with
 // the switch information
-func NewVmSwitch(name string) (*VmSwitch, error) {
+func NewVMSwitchManager(name string) (*VMSwitchManager, error) {
 	w, err := wmi.NewConnection(".", `root\virtualization\v2`)
 	if err != nil {
 		return nil, err
 	}
 
 	// Get virtual switch management service
-	svc, err := w.GetOne(VM_SWITCH_MNGMNT_SERVICE, []string{}, []wmi.WMIQuery{})
+	svc, err := w.GetOne(VMSwitchManagementService, []string{}, []wmi.WMIQuery{})
 	if err != nil {
 		return nil, err
 	}
 
-	sw := &VmSwitch{
+	sw := &VMSwitchManager{
 		con:  w,
 		svc:  svc,
 		name: name,
@@ -60,63 +62,69 @@ func NewVmSwitch(name string) (*VmSwitch, error) {
 	return sw, nil
 }
 
-func (s *VmSwitch) Name() string {
+// Name returns the name of this VMswitch
+func (s *VMSwitchManager) Name() string {
 	mutex.Lock()
 	defer mutex.Unlock()
 	return s.name
 }
 
-func (s *VmSwitch) getVmSwitch(name string) (*wmi.WMIResult, bool, error) {
+func (s *VMSwitchManager) getVMSwitchManager(name string) (*wmi.WMIResult, bool, error) {
 	qParams := []wmi.WMIQuery{
 		&wmi.WMIAndQuery{wmi.QueryFields{Key: "ElementName", Value: name, Type: wmi.Equals}},
 	}
-	sw, err := s.con.Gwmi(VM_SWITCH, []string{}, qParams)
+	sw, err := s.con.Gwmi(VMSwitch, []string{}, qParams)
 	if err != nil {
 		return nil, false, err
 	}
 
-	if elements, err := sw.Elements(); err != nil {
+	elements, err := sw.Elements()
+	if err != nil {
 		return nil, false, err
-	} else {
-		if len(elements) > 0 {
-			return elements[0], true, nil
-		}
 	}
-	data, err := s.con.Get(VM_SWITCH_SETTINGS)
+
+	if len(elements) > 0 {
+		return elements[0], true, nil
+	}
+
+	data, err := s.con.Get(VMSwitchSettings)
 	if err != nil {
 		return nil, false, err
 	}
 	return data, false, nil
 }
 
-func (s *VmSwitch) refresh() error {
+func (s *VMSwitchManager) refresh() error {
 	if s.name == "" {
 		return fmt.Errorf("Switch name not set")
 	}
 	mutex.Lock()
 	defer mutex.Unlock()
 	var err error
-	s.data, s.exists, err = s.getVmSwitch(s.name)
+	s.data, s.exists, err = s.getVMSwitchManager(s.name)
 	return err
 }
 
-func (s *VmSwitch) setName(name string) {
+func (s *VMSwitchManager) setName(name string) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	s.name = name
 }
 
-func (s *VmSwitch) Exists() bool {
-	mutex.Lock()
-	defer mutex.Unlock()
+// Exists returns a boolean value indicating whether or not
+// the VMSwitch exists
+func (s *VMSwitchManager) Exists() bool {
+	s.refresh()
 	return s.exists
 }
 
-func (s *VmSwitch) Release() {
+// Release closes the WMI connection associated with this
+// VMSWitchManager
+func (s *VMSwitchManager) Release() {
 	s.con.Close()
 }
 
-func (s *VmSwitch) getExternalPort(name string) (*wmi.WMIResult, error) {
+func (s *VMSwitchManager) getExternalPort(name string) (*wmi.WMIResult, error) {
 	qParams := []wmi.WMIQuery{
 		&wmi.WMIAndQuery{
 			wmi.QueryFields{
@@ -126,14 +134,14 @@ func (s *VmSwitch) getExternalPort(name string) (*wmi.WMIResult, error) {
 		},
 	}
 	fields := []string{}
-	result, err := s.con.GetOne(EXTERNAL_PORT, fields, qParams)
+	result, err := s.con.GetOne(ExternalPort, fields, qParams)
 	if err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
-func (s *VmSwitch) getDefaultSettingsData() (*wmi.WMIResult, error) {
+func (s *VMSwitchManager) getDefaultSettingsData() (*wmi.WMIResult, error) {
 	qParams := []wmi.WMIQuery{
 		&wmi.WMIAndQuery{
 			wmi.QueryFields{
@@ -144,25 +152,26 @@ func (s *VmSwitch) getDefaultSettingsData() (*wmi.WMIResult, error) {
 		&wmi.WMIAndQuery{
 			wmi.QueryFields{
 				Key:   "ResourceSubType",
-				Value: ETH_CONN_RES_SUB_TYPE,
+				Value: ETHConnResSubType,
 				Type:  wmi.Equals},
 		},
 	}
 	fields := []string{}
-	result, err := s.con.GetOne(PORT_ALLOC_SET_DATA, fields, qParams)
+	result, err := s.con.GetOne(PortAllocSetData, fields, qParams)
 	if err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
-func (s *VmSwitch) SetSwitchName(name string) error {
+// SetSwitchName renames this VMSwitch
+func (s *VMSwitchManager) SetSwitchName(name string) error {
 	//Change switch name
 	var result *wmi.WMIResult
 	var err error
 	var text string
 
-	if result, err = s.data.Get("associators_", nil, VM_SWITCH_SETTINGS); err != nil {
+	if result, err = s.data.Get("associators_", nil, VMSwitchSettings); err != nil {
 		return err
 	}
 	if result, err = result.ItemAtIndex(0); err != nil {
@@ -190,7 +199,8 @@ func (s *VmSwitch) SetSwitchName(name string) error {
 	return nil
 }
 
-func (s *VmSwitch) Delete() error {
+// Delete removes this VMSwitch
+func (s *VMSwitchManager) Delete() error {
 	sw, err := s.data.Path()
 	if err != nil {
 		return fmt.Errorf("Failed to get Path: %v", err)
@@ -209,7 +219,8 @@ func (s *VmSwitch) Delete() error {
 	return nil
 }
 
-func (s *VmSwitch) Create() error {
+// Create creates this VMswitch
+func (s *VMSwitchManager) Create() error {
 	if s.Exists() {
 		return nil
 	}
@@ -244,7 +255,7 @@ func (s *VmSwitch) Create() error {
 	return err
 }
 
-func (s *VmSwitch) getSwitchSettings() (*wmi.WMIResult, error) {
+func (s *VMSwitchManager) getSwitchSettings() (*wmi.WMIResult, error) {
 	if s.Exists() == false {
 		return nil, fmt.Errorf("Switch %s is not yet created", s.name)
 	}
@@ -253,30 +264,32 @@ func (s *VmSwitch) getSwitchSettings() (*wmi.WMIResult, error) {
 		if count >= 50 {
 			break
 		}
-		settingsDataResult, err := s.data.Get("associators_", nil, VM_SWITCH_SETTINGS)
+		settingsDataResult, err := s.data.Get("associators_", nil, VMSwitchSettings)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to get assoc: %v", err)
 		}
-		if c, err := settingsDataResult.Elements(); err != nil {
+		c, err := settingsDataResult.Elements()
+		if err != nil {
 			return nil, err
-		} else {
-			if len(c) > 0 {
-				return c[0], nil
-			}
 		}
-		count += 1
+
+		if len(c) > 0 {
+			return c[0], nil
+		}
+
+		count++
 		time.Sleep(100 * time.Millisecond)
 	}
 	return nil, fmt.Errorf("Failed to get switch settings")
 }
 
-func (s *VmSwitch) getSwitchPorts() ([]vmswitchPorts, error) {
+func (s *VMSwitchManager) getSwitchPorts() ([]vmswitchPorts, error) {
 	settingsData, err := s.getSwitchSettings()
 	if err != nil {
 		return []vmswitchPorts{}, fmt.Errorf("Failed to get item2: %v", err)
 	}
 
-	ethernetPortAllocationData, err := settingsData.Get("associators_", nil, PORT_ALLOC_SET_DATA)
+	ethernetPortAllocationData, err := settingsData.Get("associators_", nil, PortAllocSetData)
 	if err != nil {
 		return []vmswitchPorts{}, fmt.Errorf("Failed to get assoc: %v", err)
 	}
@@ -297,18 +310,18 @@ func (s *VmSwitch) getSwitchPorts() ([]vmswitchPorts, error) {
 		}
 
 		valuePath := valueArray[0].(string)
-		location, err := wmi.NewWMILocation(valuePath)
+		location, err := wmi.NewLocation(valuePath)
 		if err != nil {
 			return []vmswitchPorts{}, err
 		}
 		defer location.Close()
 
-		ext_port, err := location.GetWMIResult()
+		extPort, err := location.GetWMIResult()
 		if err != nil {
 			return []vmswitchPorts{}, err
 		}
 
-		name, err := ext_port.GetProperty("ElementName")
+		name, err := extPort.GetProperty("ElementName")
 		if err != nil {
 			return []vmswitchPorts{}, err
 		}
@@ -326,20 +339,21 @@ func (s *VmSwitch) getSwitchPorts() ([]vmswitchPorts, error) {
 	return switchPorts, nil
 }
 
-func (s *VmSwitch) RemovePort() error {
+// RemoveExternalPort will remove the external port from the VMSWitch
+func (s *VMSwitchManager) RemoveExternalPort() error {
 	ports, err := s.getSwitchPorts()
 	if err != nil {
 		return err
 	}
 	resources := []string{}
 	for _, port := range ports {
-		if port.location.Class != COMPUTER_SYSTEM && port.location.Class != EXTERNAL_PORT {
+		if port.location.Class != ComputerSystem && port.location.Class != ExternalPort {
 			continue
 		}
 		qParams := []wmi.WMIQuery{
 			&wmi.WMIAndQuery{wmi.QueryFields{Key: "InstanceID", Value: port.InstanceID(), Type: wmi.Equals}},
 		}
-		settings, err := s.con.GetOne(CIM_RES_ALLOC_SETTING_DATA_CLASS, []string{}, qParams)
+		settings, err := s.con.GetOne(CIMResAllocSettingDataClass, []string{}, qParams)
 		if err != nil {
 			return fmt.Errorf("Failed to run query: %v", err)
 		}
@@ -367,58 +381,61 @@ func (s *VmSwitch) RemovePort() error {
 	return nil
 }
 
-func (s *VmSwitch) getExternalPortSettingsData(name string) (*wmi.WMIResult, error) {
-	ext_port, err := s.getExternalPort(name)
+func (s *VMSwitchManager) getExternalPortSettingsData(name string) (*wmi.WMIResult, error) {
+	extPort, err := s.getExternalPort(name)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get external port: %v", err)
 	}
-	ext_port_path, err := ext_port.Path()
+	extPortPath, err := extPort.Path()
 	if err != nil {
 		return nil, fmt.Errorf("Could not call path_: %v", err)
 	}
-	ext_port_alloc, err := s.getDefaultSettingsData()
+	extPortAlloc, err := s.getDefaultSettingsData()
 	if err != nil {
 		return nil, fmt.Errorf("1> %v", err)
 	}
 
-	err = ext_port_alloc.Set("HostResource", []string{ext_port_path})
+	err = extPortAlloc.Set("HostResource", []string{extPortPath})
 	if err != nil {
 		return nil, fmt.Errorf("Failed to set HostResource: %v", err)
 	}
-	return ext_port_alloc, nil
+	return extPortAlloc, nil
 }
 
-func (s *VmSwitch) hasPortAttached(name string) (bool, error) {
-	if ports, err := s.getSwitchPorts(); err == nil {
-		for _, port := range ports {
-			if name == port.name {
-				return true, nil
-			}
-		}
-		return false, nil
-	} else {
+func (s *VMSwitchManager) hasPortAttached(name string) (bool, error) {
+	ports, err := s.getSwitchPorts()
+	if err != nil {
 		return false, err
 	}
-}
 
-func (s *VmSwitch) SetExternalPort(name string) error {
-	if hasPort, err := s.hasPortAttached(name); err != nil {
-		return err
-	} else {
-		if hasPort {
-			return nil
+	for _, port := range ports {
+		if name == port.name {
+			return true, nil
 		}
 	}
-	port_data, err := s.getExternalPortSettingsData(name)
+	return false, nil
+}
+
+// SetExternalPort sets the external port on this switch
+func (s *VMSwitchManager) SetExternalPort(name string) error {
+	hasPort, err := s.hasPortAttached(name)
 	if err != nil {
 		return err
 	}
-	ext_text, err := port_data.GetText(1)
+	if hasPort {
+		return nil
+	}
+
+	portData, err := s.getExternalPortSettingsData(name)
+	if err != nil {
+		return err
+	}
+	extText, err := portData.GetText(1)
 	if err != nil {
 		return fmt.Errorf("Failed to get ext_port_alloc text: %v", err)
 	}
 	resources := []string{
-		ext_text,
+		extText,
 	}
 
 	virtualEthernetSwSetData, err := s.getSwitchSettings()
