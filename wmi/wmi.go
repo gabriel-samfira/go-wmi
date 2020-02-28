@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-ole/go-ole"
 	"github.com/go-ole/go-ole/oleutil"
+	"github.com/pkg/errors"
 )
 
 // QueryType holds the condition of the query
@@ -31,6 +32,13 @@ type WMI struct {
 	Server    string
 
 	params []interface{}
+}
+
+// NewResult wraps an ole.VARINT in a *Result
+func NewResult(v *ole.VARIANT) *Result {
+	return &Result{
+		rawRes: v,
+	}
 }
 
 // Result holds the raw WMI result of a query
@@ -136,7 +144,7 @@ func (r *Result) ItemAtIndex(i int) (*Result, error) {
 
 	itemRaw, err := oleutil.CallMethod(res, "ItemIndex", i)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "ItemIndex")
 	}
 	wmiRes := &Result{
 		rawRes: itemRaw,
@@ -150,13 +158,13 @@ func (r *Result) Elements() ([]*Result, error) {
 	var count int
 	count, err = r.Count()
 	if err != nil {
-		return []*Result{}, err
+		return []*Result{}, errors.Wrap(err, "getting result count")
 	}
 	results := make([]*Result, count)
 	for i := 0; i < count; i++ {
 		results[i], err = r.ItemAtIndex(i)
 		if err != nil {
-			return []*Result{}, err
+			return []*Result{}, errors.Wrap(err, "ItemAtIndex")
 		}
 	}
 	return results, nil
@@ -270,7 +278,7 @@ func (r *Result) Count() (int, error) {
 	}
 	countVar, err := oleutil.GetProperty(res, "Count")
 	if err != nil {
-		return 0, err
+		return 0, errors.Wrap(err, "getting Count property")
 	}
 	return int(countVar.Val), nil
 }
@@ -374,7 +382,7 @@ func (w *WMI) Gwmi(resource string, fields []string, qParams []Query) (*Result, 
 	}
 	// result is a SWBemObjectSet
 	q := fmt.Sprintf("SELECT %s FROM %s %s", n, resource, qStr)
-	// fmt.Println(q)
+	fmt.Println(q)
 	resultRaw, err := oleutil.CallMethod(w.wmi, "ExecQuery", q)
 	if err != nil {
 		return nil, err

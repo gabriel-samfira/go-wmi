@@ -15,6 +15,7 @@ const (
 	StorageAllocSettingDataClass           = "Msvm_StorageAllocationSettingData"      // _STORAGE_ALLOC_SETTING_DATA_CLASS
 	EthernetPortAllocationSettingDataClass = "Msvm_EthernetPortAllocationSettingData" // _ETHERNET_PORT_ALLOCATION_SETTING_DATA_CLASS
 	SerialPortSettingDataClass             = "Msvm_SerialPortSettingData"             // _TH_SERIAL_PORT_SETTING_DATA_CLASS
+	ComputerSystemClass                    = "Msvm_ComputerSystem"
 )
 
 // VM power state constants
@@ -43,12 +44,15 @@ const (
 	VirtualSystemTypeRealized = "Microsoft:Hyper-V:System:Realized"           // _VIRTUAL_SYSTEM_TYPE_REALIZED
 )
 
+// BootOrderType represents the boot order type
+type BootOrderType int32
+
 // Boot order entries
-const (
-	BootFloppy = 0
-	BootCDROM  = 1
-	BootHDD    = 2
-	BootPXE    = 3
+var (
+	BootFloppy BootOrderType = 0
+	BootCDROM  BootOrderType = 1
+	BootHDD    BootOrderType = 2
+	BootPXE    BootOrderType = 3
 )
 
 // VM auto startup constants
@@ -66,4 +70,18 @@ const (
 // Snapshot constant
 const (
 	SnapshotFull = 2 // _SNAPSHOT_FULL
+)
+
+// Misc
+const (
+	VirtualSystemCurrentSettings = 3 // _VIRTUAL_SYSTEM_CURRENT_SETTINGS
+)
+
+// GenerationType defines the VM generation type
+type GenerationType string
+
+// VM generation constants
+var (
+	Generation1 GenerationType = "Microsoft:Hyper-V:SubType:1"
+	Generation2 GenerationType = "Microsoft:Hyper-V:SubType:2"
 )
