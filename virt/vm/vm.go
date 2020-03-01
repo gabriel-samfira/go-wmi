@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 
+	"go-wmi/utils"
+
 	"github.com/go-ole/go-ole"
 	"github.com/pkg/errors"
 )
@@ -166,7 +168,7 @@ func (m *Manager) CreateVM(name string, memoryMB int64, cpus int, limitCPUFeatur
 		}
 	}
 
-	// The resulting system  value is always a string containing the
+	// The resultingSystem value for DefineSystem is always a string containing the
 	// location of the newly created resource
 	locationURI := resultingSystem.Value().(string)
 	loc, err := wmi.NewLocation(locationURI)
@@ -371,11 +373,93 @@ func (v *VirtualMachine) SetPowerState(state PowerState) error {
 	return nil
 }
 
-func (v *VirtualMachine) createNewSCSIController() (string, error) {
-	return "", nil
+func (v *VirtualMachine) getSCSIResourceAllocSettings() (*wmi.Result, error) {
+	// ResourceAllocSettingDataClass
+
+	qParams := []wmi.Query{
+		&wmi.AndQuery{
+			wmi.QueryFields{
+				Key:   "ResourceSubType",
+				Value: SCSIControllerResSubType,
+				Type:  wmi.Equals,
+			},
+		},
+		&wmi.AndQuery{
+			wmi.QueryFields{
+				Key:   "InstanceID",
+				Value: "%\\\\Default",
+				Type:  wmi.Like,
+			},
+		},
+	}
+	settingsDataResults, err := v.mgr.con.Gwmi(ResourceAllocSettingDataClass, []string{}, qParams)
+	if err != nil {
+		return nil, errors.Wrap(err, "getting ResourceAllocSettingDataClass")
+	}
+	settingsData, err := settingsDataResults.ItemAtIndex(0)
+	if err != nil {
+		return nil, errors.Wrap(err, "getting result")
+	}
+	return settingsData, nil
 }
 
-func (v *VirtualMachine) maybeCreateSCSIController() (string, error) {
+func (v *VirtualMachine) addResourceSetting(settingsData []string) ([]string, error) {
+	vmPath, err := v.computerSystem.Path()
+	if err != nil {
+		return nil, errors.Wrap(err, "vm Path()")
+	}
+	jobPath := ole.VARIANT{}
+	resultingSystem := ole.VARIANT{}
+	jobState, err := v.mgr.svc.Get("AddResourceSettings", vmPath, settingsData, &resultingSystem, &jobPath)
+	if err != nil {
+		return nil, errors.Wrap(err, "calling ModifyResourceSettings")
+	}
+
+	if jobState.Value().(int32) == wmi.JobStatusStarted {
+		err := wmi.WaitForJob(jobPath.Value().(string))
+		if err != nil {
+			return nil, errors.Wrap(err, "waiting for job")
+		}
+	}
+	safeArrayConversion := resultingSystem.ToArray()
+	valArray := safeArrayConversion.ToValueArray()
+	if len(valArray) == 0 {
+		return nil, fmt.Errorf("no resource in resultingSystem value")
+	}
+	resultingSystems := make([]string, len(valArray))
+	for idx, val := range valArray {
+		resultingSystems[idx] = val.(string)
+	}
+	return resultingSystems, nil
+}
+
+// CreateNewSCSIController will create a new ISCSI controller on this VM
+func (v *VirtualMachine) CreateNewSCSIController() (string, error) {
+	resData, err := v.getSCSIResourceAllocSettings()
+	if err != nil {
+		return "", errors.Wrap(err, "getSCSIResourceAllocSettings")
+	}
+	newID, err := utils.UUID4()
+	if err != nil {
+		return "", errors.Wrap(err, "UUID4")
+	}
+	if err := resData.Set("VirtualSystemIdentifiers", []string{fmt.Sprintf("{%s}", newID)}); err != nil {
+		return "", errors.Wrap(err, "VirtualSystemIdentifiers")
+	}
+
+	dataText, err := resData.GetText(1)
+	if err != nil {
+		return "", errors.Wrap(err, "GetText")
+	}
+
+	resCtrl, err := v.addResourceSetting([]string{dataText})
+	if err != nil {
+		return "", errors.Wrap(err, "addResourceSetting")
+	}
+	return resCtrl[0], nil
+}
+
+func (v *VirtualMachine) getResourceOfType(subType string) (string, error) {
 	settingClasses, err := v.activeSettingsData.Get("associators_", nil, ResourceAllocSettingDataClass)
 	if err != nil {
 		return "", errors.Wrap(err, "getting ResourceAllocSettingDataClass")
@@ -389,9 +473,34 @@ func (v *VirtualMachine) maybeCreateSCSIController() (string, error) {
 		if err != nil {
 			continue
 		}
-		if resSubtype.Value().(string) == SCSIControllerResSubType {
-			return val.Path()
+		if resSubtype.Value().(string) == subType {
+			pth, err := val.Path()
+			if err != nil {
+				return "", errors.Wrap(err, "SCSIControllerResSubType path_")
+			}
+			return pth, nil
 		}
 	}
-	return "", nil
+	return "", wmi.ErrNotFound
+}
+
+// GetOrCreateSCSIController will look for an ISCSI controller on the VM. If one is
+// present, it will be returned. If not, one will be created then returned.
+func (v *VirtualMachine) GetOrCreateSCSIController() (string, error) {
+	res, err := v.getResourceOfType(SCSIControllerResSubType)
+	if err != nil {
+		// If we get any other error than not found, we return
+		if err != wmi.ErrNotFound {
+			return "", errors.Wrap(err, "getResourceOfType SCSIControllerResSubType")
+		}
+	} else {
+		return res, nil
+	}
+
+	// Need to create one
+	ctrl, err := v.CreateNewSCSIController()
+	if err != nil {
+		return "", errors.Wrap(err, "CreateNewSCSIController")
+	}
+	return ctrl, nil
 }

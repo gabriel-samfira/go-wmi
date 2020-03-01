@@ -1,6 +1,7 @@
 github.com/gabriel-samfira/go-wmi v0.0.0-20200227220452-1cef19dc38b3 h1:rkI83AHZjW9dPE2TK0ut65Dj3au8UaGXCXQE9aOargQ=
 github.com/gabriel-samfira/go-wmi v0.0.0-20200227220452-1cef19dc38b3/go.mod h1:EoI2ITOwWvwasD3aU9nwo/inhkX7gqB3Iqn4RiRuLLk=
 github.com/gabriel-samfira/go-wmi v0.0.0-20200227232958-08a93c1fdee0 h1:cAHbiiNYg8opOqtkXlI8YHJ1TE5qq1xJtcC++PMyjI8=
+github.com/gabriel-samfira/go-wmi v0.0.0-20200301011044-d46a888775ca h1:T0JsKYiHRWYp2Zr0E2gO7HuOCZCvi1vvE/ghz3GjbQ4=
 github.com/go-ole/go-ole v1.2.4 h1:nNBDSCOigTSiarFpYE9J/KtEA1IOW4CNeqT9TQDqCxI=
 github.com/go-ole/go-ole v1.2.4/go.mod h1:XCwSNxSkXRo4vlyPy93sltvi/qJq0jqQhjqQNIwKuxM=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=

@@ -28,4 +28,7 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println(vm)
+
+	scsi, err := vm.GetOrCreateSCSIController()
+	fmt.Println(scsi, err)
 }
