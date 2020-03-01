@@ -22,7 +22,7 @@ func main() {
 
 	defer vmm.Release()
 
-	vm, err := vmm.CreateVM("cucu", 1024, 2, false, []string{"ana", "are", "mere"}, vm.Generation2)
+	vm, err := vmm.CreateVM("cucu", 3072, 3, false, []string{"ana", "are", "mere"}, vm.Generation2)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)

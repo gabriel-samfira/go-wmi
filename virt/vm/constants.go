@@ -18,14 +18,20 @@ const (
 	ComputerSystemClass                    = "Msvm_ComputerSystem"
 )
 
+// PowerState is the power state type.
+type PowerState uint16
+
 // VM power state constants
-const (
-	Enabled      = 2
-	Disabled     = 3
-	ShuttingDown = 4
-	Reboot       = 11
-	Paused       = 9
-	Suspended    = 6
+// See: https://docs.microsoft.com/en-us/windows/win32/hyperv_v2/msvm-computersystem
+var (
+	Enabled      PowerState = 2
+	Disabled     PowerState = 3
+	ShuttingDown PowerState = 4
+	Offline      PowerState = 6
+	Reboot       PowerState = 10
+	Reset        PowerState = 11
+	Quiesce      PowerState = 9
+	Suspended    PowerState = 6
 )
 
 // Device resource and subtypes

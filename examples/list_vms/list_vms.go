@@ -44,5 +44,7 @@ func main() {
 			errExit(err)
 		}
 		fmt.Println(vm)
+		aa, err := vm.MaybeCreateSCSIController()
+		fmt.Println(aa, err)
 	}
 }

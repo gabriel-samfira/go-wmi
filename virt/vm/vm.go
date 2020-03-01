@@ -198,6 +198,17 @@ func (m *Manager) CreateVM(name string, memoryMB int64, cpus int, limitCPUFeatur
 		return nil, errors.Wrap(err, "setting CPU limit")
 	}
 
+	bootOrder := []int32{
+		int32(BootHDD),
+		int32(BootPXE),
+		int32(BootCDROM),
+		int32(BootFloppy),
+	}
+
+	if err := vm.SetBootOrder(bootOrder); err != nil {
+		return nil, errors.Wrap(err, "setting boot order")
+	}
+
 	return vm, nil
 }
 
@@ -239,23 +250,73 @@ func (v *VirtualMachine) AttachDisks(disks []string) error {
 }
 
 // SetBootOrder sets the VM boot order
-func (v *VirtualMachine) SetBootOrder(bootOrder []BootOrderType) error {
-	// bootOrder := []int32{
-	// 	int32(BootHDD),
-	// 	int32(BootPXE),
-	// 	int32(BootCDROM),
-	// 	int32(BootFloppy),
-	// }
+func (v *VirtualMachine) SetBootOrder(bootOrder []int32) error {
+	if err := v.activeSettingsData.Set("BootOrder", bootOrder); err != nil {
+		return errors.Wrap(err, "Set BootOrder")
+	}
 
-	// if err := newVMInstance.Set("BootOrder", bootOrder); err != nil {
-	// 	return nil, errors.Wrap(err, "Set BootOrder")
-	// }
+	vmText, err := v.activeSettingsData.GetText(1)
+
+	jobPath := ole.VARIANT{}
+	jobState, err := v.mgr.svc.Get("ModifySystemSettings", vmText, &jobPath)
+	if err != nil {
+		return errors.Wrap(err, "calling ModifySystemSettings")
+	}
+	if jobState.Value().(int32) == wmi.JobStatusStarted {
+		err := wmi.WaitForJob(jobPath.Value().(string))
+		if err != nil {
+			return errors.Wrap(err, "waiting for job")
+		}
+	}
+	return nil
+}
+
+func (v *VirtualMachine) modifyResourceSettings(settings []string) error {
+	jobPath := ole.VARIANT{}
+	resultingSystem := ole.VARIANT{}
+	jobState, err := v.mgr.svc.Get("ModifyResourceSettings", settings, &resultingSystem, &jobPath)
+	if err != nil {
+		return errors.Wrap(err, "calling ModifyResourceSettings")
+	}
+	if jobState.Value().(int32) == wmi.JobStatusStarted {
+		err := wmi.WaitForJob(jobPath.Value().(string))
+		if err != nil {
+			return errors.Wrap(err, "waiting for job")
+		}
+	}
 	return nil
 }
 
 // SetMemory sets the virtual machine memory allocation
 func (v *VirtualMachine) SetMemory(memoryMB int64) error {
-	return nil
+	memorySettingsResults, err := v.activeSettingsData.Get("associators_", nil, MemorySettingDataClass)
+	if err != nil {
+		return errors.Wrap(err, "getting MemorySettingDataClass")
+	}
+
+	memorySettings, err := memorySettingsResults.ItemAtIndex(0)
+	if err != nil {
+		return errors.Wrap(err, "ItemAtIndex")
+	}
+
+	if err := memorySettings.Set("Limit", memoryMB); err != nil {
+		return errors.Wrap(err, "Limit")
+	}
+
+	if err := memorySettings.Set("Reservation", memoryMB); err != nil {
+		return errors.Wrap(err, "Reservation")
+	}
+
+	if err := memorySettings.Set("VirtualQuantity", memoryMB); err != nil {
+		return errors.Wrap(err, "VirtualQuantity")
+	}
+
+	memText, err := memorySettings.GetText(1)
+	if err != nil {
+		return errors.Wrap(err, "Failed to get VM instance XML")
+	}
+
+	return v.modifyResourceSettings([]string{memText})
 }
 
 // SetNumCPUs sets the number of CPU cores on the VM
@@ -264,5 +325,73 @@ func (v *VirtualMachine) SetNumCPUs(cpus int) error {
 	if hostCpus < cpus {
 		return fmt.Errorf("Number of cpus exceeded available host resources")
 	}
+
+	procSettingsResults, err := v.activeSettingsData.Get("associators_", nil, ProcessorSettingDataClass)
+	if err != nil {
+		return errors.Wrap(err, "getting ProcessorSettingDataClass")
+	}
+
+	procSettings, err := procSettingsResults.ItemAtIndex(0)
+	if err != nil {
+		return errors.Wrap(err, "ItemAtIndex")
+	}
+
+	if err := procSettings.Set("VirtualQuantity", uint64(cpus)); err != nil {
+		return errors.Wrap(err, "VirtualQuantity")
+	}
+
+	if err := procSettings.Set("Reservation", cpus); err != nil {
+		return errors.Wrap(err, "Reservation")
+	}
+
+	if err := procSettings.Set("Limit", 100000); err != nil {
+		return errors.Wrap(err, "Limit")
+	}
+
+	procText, err := procSettings.GetText(1)
+	if err != nil {
+		return errors.Wrap(err, "Failed to get VM instance XML")
+	}
+	return v.modifyResourceSettings([]string{procText})
+}
+
+// SetPowerState sets the desired power state on a virtual machine.
+func (v *VirtualMachine) SetPowerState(state PowerState) error {
+	jobPath := ole.VARIANT{}
+	jobState, err := v.computerSystem.Get("RequestStateChange", uint16(state), &jobPath)
+	if err != nil {
+		return errors.Wrap(err, "calling RequestStateChange")
+	}
+	if jobState.Value().(int32) == wmi.JobStatusStarted {
+		err = wmi.WaitForJob(jobPath.Value().(string))
+		if err != nil {
+			return errors.Wrap(err, "waiting for job")
+		}
+	}
 	return nil
+}
+
+func (v *VirtualMachine) createNewSCSIController() (string, error) {
+	return "", nil
+}
+
+func (v *VirtualMachine) maybeCreateSCSIController() (string, error) {
+	settingClasses, err := v.activeSettingsData.Get("associators_", nil, ResourceAllocSettingDataClass)
+	if err != nil {
+		return "", errors.Wrap(err, "getting ResourceAllocSettingDataClass")
+	}
+	settingElements, err := settingClasses.Elements()
+	if err != nil {
+		return "", errors.Wrap(err, "fetching elements")
+	}
+	for _, val := range settingElements {
+		resSubtype, err := val.GetProperty("ResourceSubType")
+		if err != nil {
+			continue
+		}
+		if resSubtype.Value().(string) == SCSIControllerResSubType {
+			return val.Path()
+		}
+	}
+	return "", nil
 }
