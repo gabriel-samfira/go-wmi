@@ -50,6 +50,16 @@ const (
 	VirtualSystemTypeRealized = "Microsoft:Hyper-V:System:Realized"           // _VIRTUAL_SYSTEM_TYPE_REALIZED
 )
 
+// DriveType represents the type of drive that can get attached
+// to an IDE or SCSI controller
+type DriveType string
+
+// Disk drive types
+var (
+	DiskDrive DriveType = DiskResSubtype
+	DVDDrive  DriveType = DVDResSubType
+)
+
 // BootOrderType represents the boot order type
 type BootOrderType int32
 
@@ -80,7 +90,8 @@ const (
 
 // Misc
 const (
-	VirtualSystemCurrentSettings = 3 // _VIRTUAL_SYSTEM_CURRENT_SETTINGS
+	VirtualSystemCurrentSettings = 3  // _VIRTUAL_SYSTEM_CURRENT_SETTINGS
+	MaxSCSIControllerSlots       = 64 // SCSI_CONTROLLER_SLOTS_NUMBER
 )
 
 // GenerationType defines the VM generation type

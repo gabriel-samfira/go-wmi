@@ -23,8 +23,7 @@ func main() {
 
 	vms, err := vmm.ListVM()
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		errExit(err)
 	}
 	fmt.Println(vms)
 
@@ -44,7 +43,24 @@ func main() {
 			errExit(err)
 		}
 		fmt.Println(vm)
-		aa, err := vm.MaybeCreateSCSIController()
-		fmt.Println(aa, err)
+		aa, err := vm.GetSCSIControllers()
+		if err != nil {
+			errExit(err)
+		}
+		fmt.Println(aa)
+		if len(aa) > 0 {
+			for _, val := range aa {
+				devs, err := val.AttachedDevices()
+				if err != nil {
+					errExit(err)
+				}
+				fmt.Println(devs)
+				empty, err := val.EmptySlots()
+				if err != nil {
+					errExit(err)
+				}
+				fmt.Println(empty)
+			}
+		}
 	}
 }
