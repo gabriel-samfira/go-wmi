@@ -333,7 +333,7 @@ func (v *VirtualMachine) SetBootOrder(bootOrder []int32) error {
 	if err != nil {
 		return errors.Wrap(err, "GetText")
 	}
-	fmt.Println(vmText)
+
 	jobPath := ole.VARIANT{}
 	jobState, err := v.mgr.svc.Get("ModifySystemSettings", vmText, &jobPath)
 	if err != nil {

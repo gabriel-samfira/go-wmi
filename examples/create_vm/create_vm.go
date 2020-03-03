@@ -56,7 +56,7 @@ func main() {
 		errExit(err)
 	}
 	for _, val := range scsi {
-		fmt.Printf("SCSI controller is: %s", val)
+		fmt.Printf("SCSI controller is: %v\n", val)
 	}
 
 	ctrl := scsi[0]
