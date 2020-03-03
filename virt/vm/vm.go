@@ -2,12 +2,12 @@ package vm
 
 import (
 	"fmt"
-	"go-wmi/wmi"
 	"runtime"
 	"strconv"
 	"strings"
 
-	"go-wmi/utils"
+	"github.com/gabriel-samfira/go-wmi/utils"
+	"github.com/gabriel-samfira/go-wmi/wmi"
 
 	"github.com/go-ole/go-ole"
 	"github.com/pkg/errors"
@@ -330,7 +330,10 @@ func (v *VirtualMachine) SetBootOrder(bootOrder []int32) error {
 	}
 
 	vmText, err := v.activeSettingsData.GetText(1)
-
+	if err != nil {
+		return errors.Wrap(err, "GetText")
+	}
+	fmt.Println(vmText)
 	jobPath := ole.VARIANT{}
 	jobState, err := v.mgr.svc.Get("ModifySystemSettings", vmText, &jobPath)
 	if err != nil {

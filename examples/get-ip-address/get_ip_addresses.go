@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"go-wmi/wmi"
+	"github.com/gabriel-samfira/go-wmi/wmi"
 )
 
 func main() {

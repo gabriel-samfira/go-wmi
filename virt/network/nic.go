@@ -3,7 +3,7 @@ package network
 import (
 	"sync"
 
-	"go-wmi/wmi"
+	"github.com/gabriel-samfira/go-wmi/wmi"
 )
 
 // PowerManagementCapability represents an adapters power management
