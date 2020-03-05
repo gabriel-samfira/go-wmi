@@ -32,7 +32,8 @@ func NewVMManager() (*Manager, error) {
 	return sw, nil
 }
 
-// Manager manages a VM switch
+// Manager offers a root\virtualization\v2 instance connection
+// and an instance of Msvm_VirtualSystemManagementService
 type Manager struct {
 	con *wmi.WMI
 	svc *wmi.Result

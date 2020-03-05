@@ -382,7 +382,7 @@ func (w *WMI) Gwmi(resource string, fields []string, qParams []Query) (*Result, 
 	}
 	// result is a SWBemObjectSet
 	q := fmt.Sprintf("SELECT %s FROM %s %s", n, resource, qStr)
-	fmt.Println(q)
+	// fmt.Println(q)
 	resultRaw, err := oleutil.CallMethod(w.wmi, "ExecQuery", q)
 	if err != nil {
 		return nil, err
