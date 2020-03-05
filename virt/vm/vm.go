@@ -464,22 +464,114 @@ func (v *VirtualMachine) GetSCSIControllers() ([]SCSIController, error) {
 	return ret, nil
 }
 
-// AttachVnic creates a new virtual NIC on this machine
-func (v *VirtualMachine) AttachVnic(name, mac string) (*Vnic, error) {
-	return nil, nil
+// AddVnic creates a new virtual NIC on this machine
+func (v *VirtualMachine) AddVnic(name, mac string) (*Vnic, error) {
+	settingsData, err := getResourceAllocSettings(v.mgr.con, "", SyntheticEthernetPortSettingDataClass)
+	if err != nil {
+		return nil, errors.Wrap(err, "getResourceAllocSettings")
+	}
+
+	if err := settingsData.Set("ElementName", name); err != nil {
+		return nil, errors.Wrap(err, "set ElementName")
+	}
+
+	newID, err := utils.UUID4()
+	if err != nil {
+		return nil, errors.Wrap(err, "UUID4")
+	}
+
+	if err := settingsData.Set("VirtualSystemIdentifiers", []string{fmt.Sprintf("{%s}", newID)}); err != nil {
+		return nil, errors.Wrap(err, "set VirtualSystemIdentifiers")
+	}
+
+	if mac != "" {
+		mac = strings.Replace(mac, ":", "", -1)
+		mac = strings.Replace(mac, "-", "", -1)
+		if err := settingsData.Set("Address", mac); err != nil {
+			return nil, errors.Wrap(err, "set Address")
+		}
+		if err := settingsData.Set("StaticMacAddress", true); err != nil {
+			return nil, errors.Wrap(err, "set StaticMacAddress")
+		}
+	}
+
+	dataText, err := settingsData.GetText(1)
+	if err != nil {
+		return nil, errors.Wrap(err, "GetText")
+	}
+
+	resVnic, err := addResourceSetting(v.mgr.svc, []string{dataText}, v.path)
+	if err != nil {
+		return nil, errors.Wrap(err, "addResourceSetting")
+	}
+
+	return &Vnic{
+		mgr:    v.mgr,
+		path:   resVnic[0],
+		vmPath: v.path,
+	}, nil
 }
 
-// DetachVnic removed the VNIC from this machine
-func (v *VirtualMachine) DetachVnic(name) error {
+// RemoveVnic removed the VNIC from this machine
+func (v *VirtualMachine) RemoveVnic(name string) error {
+	vnicDetails, err := v.GetVnic(name)
+	if err != nil {
+		return errors.Wrap(err, "GetVnic")
+	}
+
+	if err := removeResourceSettings(v.mgr.svc, []string{vnicDetails.path}); err != nil {
+		return errors.Wrap(err, "removeResourceSettings")
+	}
 	return nil
 }
 
 // ListVnics will return a list of all VNICs attached to this VM
 func (v *VirtualMachine) ListVnics() ([]Vnic, error) {
-	return nil, nil
+	vmID, err := v.ID()
+	if err != nil {
+		return nil, errors.Wrap(err, "VM ID")
+	}
+	nics, err := getElementsAssociatedClass(v.mgr.con, SyntheticEthernetPortSettingDataClass, vmID, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "getElementsAssociatedClass")
+	}
+	ret := make([]Vnic, len(nics))
+	for idx, val := range nics {
+		ret[idx] = Vnic{
+			mgr:    v.mgr,
+			path:   val,
+			vmPath: v.path,
+		}
+	}
+	return ret, nil
 }
 
 // GetVnic will return the specified VNIC
 func (v *VirtualMachine) GetVnic(name string) (Vnic, error) {
-	return Vnic{}, nil
+	vmID, err := v.ID()
+	if err != nil {
+		return Vnic{}, errors.Wrap(err, "VM ID")
+	}
+	extraQ := []wmi.Query{
+		&wmi.AndQuery{
+			wmi.QueryFields{
+				Key:   "ElementName",
+				Value: name,
+				Type:  wmi.Equals},
+		},
+	}
+	nic, err := getElementsAssociatedClass(v.mgr.con, SyntheticEthernetPortSettingDataClass, vmID, extraQ)
+	if err != nil {
+		return Vnic{}, errors.Wrap(err, "getElementsAssociatedClass")
+	}
+
+	if len(nic) == 0 {
+		return Vnic{}, wmi.ErrNotFound
+	}
+
+	return Vnic{
+		mgr:    v.mgr,
+		path:   nic[0],
+		vmPath: v.path,
+	}, nil
 }

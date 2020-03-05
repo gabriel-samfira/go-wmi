@@ -38,6 +38,12 @@ func main() {
 		}
 		fmt.Println(name, id)
 
+		nics, err := val.ListVnics()
+		if err != nil {
+			errExit(err)
+		}
+		fmt.Printf("NICS: %v", nics)
+
 		vm, err := vmm.GetVM(id)
 		if err != nil {
 			errExit(err)

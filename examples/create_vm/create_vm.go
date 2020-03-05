@@ -64,5 +64,18 @@ func main() {
 	if err != nil {
 		errExit(err)
 	}
+
 	fmt.Println(res)
+
+	resNic, err := virtualMachine.AddVnic("nic01", "")
+	if err != nil {
+		errExit(err)
+	}
+
+	fmt.Println(resNic)
+
+	// err = virtualMachine.RemoveVnic("nic01")
+	// if err != nil {
+	// 	errExit(err)
+	// }
 }

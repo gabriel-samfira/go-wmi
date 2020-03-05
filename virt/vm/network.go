@@ -23,7 +23,7 @@ func (v *Vnic) isPlugged() (bool, error) {
 }
 
 // Plug will connect this NIC to a VMSwitch
-func (v *Vnic) Plug(vmSwitch string) error {
+func (v *Vnic) Plug(vmSwitchID string) error {
 	plugged, err := v.isPlugged()
 	if err != nil {
 		return errors.Wrap(err, "isPlugged")
