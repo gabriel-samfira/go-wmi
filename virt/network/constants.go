@@ -4,7 +4,7 @@ package network
 const (
 	ExternalPort                = "Msvm_ExternalEthernetPort"
 	ComputerSystem              = "Msvm_ComputerSystem"
-	VMSwitch                    = "Msvm_VirtualEthernetSwitch"
+	VMSwitchClass               = "Msvm_VirtualEthernetSwitch"
 	VMSwitchSettings            = "Msvm_VirtualEthernetSwitchSettingData"
 	VMSwitchManagementService   = "Msvm_VirtualEthernetSwitchManagementService"
 	WIFIPort                    = "Msvm_WiFiPort"

@@ -71,7 +71,7 @@ func (s *VMSwitchManager) getVMSwitchManager(name string) (*wmi.Result, bool, er
 	qParams := []wmi.Query{
 		&wmi.AndQuery{wmi.QueryFields{Key: "ElementName", Value: name, Type: wmi.Equals}},
 	}
-	sw, err := s.con.Gwmi(VMSwitch, []string{}, qParams)
+	sw, err := s.con.Gwmi(VMSwitchClass, []string{}, qParams)
 	if err != nil {
 		return nil, false, err
 	}
