@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gabriel-samfira/go-wmi/utils"
 	"github.com/gabriel-samfira/go-wmi/wmi"
 	"github.com/pkg/errors"
 )
@@ -19,7 +20,7 @@ type SCSIController struct {
 
 // AttachDriveToAddress attaches a new drive to this SCSI controller, on the specified slot
 func (s *SCSIController) AttachDriveToAddress(path string, driveType DriveType, address int) (string, error) {
-	resData, err := getResourceAllocSettings(s.mgr.con, string(driveType), ResourceAllocSettingDataClass)
+	resData, err := utils.GetResourceAllocSettings(s.mgr.con, string(driveType), ResourceAllocSettingDataClass)
 	if err != nil {
 		return "", errors.Wrap(err, "getResourceOfType driveType")
 	}
@@ -38,9 +39,9 @@ func (s *SCSIController) AttachDriveToAddress(path string, driveType DriveType, 
 		return "", errors.Wrap(err, "GetText")
 	}
 
-	resCtrl, err := addResourceSetting(s.mgr.svc, []string{dataText}, s.vmPath)
+	resCtrl, err := utils.AddResourceSetting(s.mgr.svc, []string{dataText}, s.vmPath)
 	if err != nil {
-		return "", errors.Wrap(err, "addResourceSetting")
+		return "", errors.Wrap(err, "utils.AddResourceSetting")
 	}
 	drivePath := resCtrl[0]
 
@@ -54,9 +55,9 @@ func (s *SCSIController) AttachDriveToAddress(path string, driveType DriveType, 
 		return "", fmt.Errorf("invalid drive type")
 	}
 
-	storageRes, err := getResourceAllocSettings(s.mgr.con, diskType, StorageAllocSettingDataClass)
+	storageRes, err := utils.GetResourceAllocSettings(s.mgr.con, diskType, StorageAllocSettingDataClass)
 	if err != nil {
-		return "", errors.Wrap(err, "getResourceAllocSettings")
+		return "", errors.Wrap(err, "utils.GetResourceAllocSettings")
 	}
 
 	if err := storageRes.Set("Parent", drivePath); err != nil {
@@ -71,9 +72,9 @@ func (s *SCSIController) AttachDriveToAddress(path string, driveType DriveType, 
 	if err != nil {
 		return "", errors.Wrap(err, "GetText")
 	}
-	resCtrl, err = addResourceSetting(s.mgr.svc, []string{storageResText}, s.vmPath)
+	resCtrl, err = utils.AddResourceSetting(s.mgr.svc, []string{storageResText}, s.vmPath)
 	if err != nil {
-		return "", errors.Wrap(err, "addResourceSetting storageRes")
+		return "", errors.Wrap(err, "utils.AddResourceSetting storageRes")
 	}
 
 	return resCtrl[0], nil

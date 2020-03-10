@@ -392,9 +392,9 @@ func (v *VirtualMachine) SetPowerState(state PowerState) error {
 
 // CreateNewSCSIController will create a new ISCSI controller on this VM
 func (v *VirtualMachine) CreateNewSCSIController() (string, error) {
-	resData, err := getResourceAllocSettings(v.mgr.con, SCSIControllerResSubType, ResourceAllocSettingDataClass)
+	resData, err := utils.GetResourceAllocSettings(v.mgr.con, SCSIControllerResSubType, ResourceAllocSettingDataClass)
 	if err != nil {
-		return "", errors.Wrap(err, "getResourceAllocSettings")
+		return "", errors.Wrap(err, "utils.GetResourceAllocSettings")
 	}
 	newID, err := utils.UUID4()
 	if err != nil {
@@ -409,9 +409,9 @@ func (v *VirtualMachine) CreateNewSCSIController() (string, error) {
 		return "", errors.Wrap(err, "GetText")
 	}
 
-	resCtrl, err := addResourceSetting(v.mgr.svc, []string{dataText}, v.path)
+	resCtrl, err := utils.AddResourceSetting(v.mgr.svc, []string{dataText}, v.path)
 	if err != nil {
-		return "", errors.Wrap(err, "addResourceSetting")
+		return "", errors.Wrap(err, "utils.AddResourceSetting")
 	}
 	return resCtrl[0], nil
 }
@@ -467,9 +467,9 @@ func (v *VirtualMachine) GetSCSIControllers() ([]SCSIController, error) {
 
 // AddVnic creates a new virtual NIC on this machine
 func (v *VirtualMachine) AddVnic(name, mac string) (*Vnic, error) {
-	settingsData, err := getResourceAllocSettings(v.mgr.con, "", SyntheticEthernetPortSettingDataClass)
+	settingsData, err := utils.GetResourceAllocSettings(v.mgr.con, "", SyntheticEthernetPortSettingDataClass)
 	if err != nil {
-		return nil, errors.Wrap(err, "getResourceAllocSettings")
+		return nil, errors.Wrap(err, "utils.GetResourceAllocSettings")
 	}
 
 	if err := settingsData.Set("ElementName", name); err != nil {
@@ -501,9 +501,9 @@ func (v *VirtualMachine) AddVnic(name, mac string) (*Vnic, error) {
 		return nil, errors.Wrap(err, "GetText")
 	}
 
-	resVnic, err := addResourceSetting(v.mgr.svc, []string{dataText}, v.path)
+	resVnic, err := utils.AddResourceSetting(v.mgr.svc, []string{dataText}, v.path)
 	if err != nil {
-		return nil, errors.Wrap(err, "addResourceSetting")
+		return nil, errors.Wrap(err, "utils.AddResourceSetting")
 	}
 
 	return &Vnic{
@@ -520,8 +520,8 @@ func (v *VirtualMachine) RemoveVnic(name string) error {
 		return errors.Wrap(err, "GetVnic")
 	}
 
-	if err := removeResourceSettings(v.mgr.svc, []string{vnicDetails.path}); err != nil {
-		return errors.Wrap(err, "removeResourceSettings")
+	if err := utils.RemoveResourceSettings(v.mgr.svc, []string{vnicDetails.path}); err != nil {
+		return errors.Wrap(err, "utils.RemoveResourceSettings")
 	}
 	return nil
 }
@@ -532,9 +532,9 @@ func (v *VirtualMachine) ListVnics() ([]Vnic, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "VM ID")
 	}
-	nics, err := getElementsAssociatedClass(v.mgr.con, SyntheticEthernetPortSettingDataClass, vmID, nil)
+	nics, err := utils.GetElementsAssociatedClass(v.mgr.con, SyntheticEthernetPortSettingDataClass, vmID, nil)
 	if err != nil {
-		return nil, errors.Wrap(err, "getElementsAssociatedClass")
+		return nil, errors.Wrap(err, "utils.GetElementsAssociatedClass")
 	}
 	ret := make([]Vnic, len(nics))
 	for idx, val := range nics {
@@ -561,9 +561,9 @@ func (v *VirtualMachine) GetVnic(name string) (Vnic, error) {
 				Type:  wmi.Equals},
 		},
 	}
-	nic, err := getElementsAssociatedClass(v.mgr.con, SyntheticEthernetPortSettingDataClass, vmID, extraQ)
+	nic, err := utils.GetElementsAssociatedClass(v.mgr.con, SyntheticEthernetPortSettingDataClass, vmID, extraQ)
 	if err != nil {
-		return Vnic{}, errors.Wrap(err, "getElementsAssociatedClass")
+		return Vnic{}, errors.Wrap(err, "utils.GetElementsAssociatedClass")
 	}
 
 	if len(nic) == 0 {

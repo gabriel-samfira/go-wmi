@@ -19,7 +19,7 @@ type Location struct {
 	// Params is a map of parameters to filter
 	Params map[string]string
 
-	conn *WMI
+	// conn *WMI
 }
 
 var pathRegexp = regexp.MustCompile(`\\\\(?P<server>[a-zA-Z0-9-.]+)\\(?P<namespace>[a-zA-Z0-9\\]+):(?P<class>[a-zA-Z_]+)[.]?(?P<params>.*)?`)
@@ -29,14 +29,14 @@ var requiredFields = []string{
 	"class",
 }
 
-// Close will close the WMI connection for this location
-func (w *Location) Close() {
-	w.conn.Close()
-}
-
 // GetResult wil return a Result for this Location
 func (w *Location) GetResult() (*Result, error) {
-	result, err := w.conn.GetOne(w.Class, []string{}, w.QueryParams())
+	conn, err := NewConnection(w.Server, w.Namespace)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	result, err := conn.GetOne(w.Class, []string{}, w.QueryParams())
 	if err != nil {
 		return nil, err
 	}
@@ -101,16 +101,12 @@ func NewLocation(path string) (*Location, error) {
 	if err != nil {
 		return nil, err
 	}
-	w, err := NewConnection(result["server"], result["namespace"])
-	if err != nil {
-		return nil, err
-	}
+
 	return &Location{
 		Server:    result["server"],
 		Namespace: result["namespace"],
 		Class:     result["class"],
 		Params:    params,
-		conn:      w,
 	}, nil
 }
 
@@ -230,7 +226,7 @@ func NewJobState(path string) (JobState, error) {
 	if err != nil {
 		return JobState{}, err
 	}
-	defer conn.Close()
+
 	// This may blow up. In theory, both CIM_ConcreteJob and Msvm_Concrete job will
 	// work with this. Also, anything that inherits CIM_ConctreteJob will also work.
 	// TODO: Make this more robust

@@ -17,7 +17,9 @@ var (
 	// Equals is the qeual conditional for a query
 	Equals QueryType = "="
 	// Like is the pattern match conditional of a query
-	Like  QueryType = " Like "
+	Like QueryType = " Like "
+	// Is comparison for null fields
+	Is    QueryType = " IS "
 	mutex           = sync.RWMutex{}
 )
 
@@ -87,10 +89,19 @@ func (w *QueryFields) buildQuery(partialQuery, cond string) (string, error) {
 	if partialQuery == "" {
 		partialQuery += "WHERE"
 	}
+
+	var val string
+	switch w.Type {
+	case Is:
+		val = fmt.Sprintf("%s", v)
+	default:
+		val = fmt.Sprintf("'%s'", v)
+	}
+
 	if strings.HasSuffix(partialQuery, "WHERE") {
-		partialQuery += fmt.Sprintf(" %s%s'%s'", w.Key, w.Type, v)
+		partialQuery += fmt.Sprintf(" %s%s%s", w.Key, w.Type, val)
 	} else {
-		partialQuery += fmt.Sprintf(" %s %s%s'%s'", cond, w.Key, w.Type, v)
+		partialQuery += fmt.Sprintf(" %s %s%s%s", cond, w.Key, w.Type, val)
 	}
 	return partialQuery, nil
 }
