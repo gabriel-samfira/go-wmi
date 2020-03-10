@@ -151,7 +151,18 @@ func (m *Manager) ListVMSwitches() ([]VirtualSwitch, error) {
 	return m.getVirtualSwitches(nil)
 }
 
-// CreateVMSwitch will create a new VM Switch
+// CreateVMSwitch will create a new private VM Switch. To convert it into an internal
+// or external VMSwitch, call the SetInternalPort() and SetExternalPort() functions.
+// Calling SetInternalPort() on a private switch will turn it into an "internal"
+// switch. An internal switch will only facilitate traffic between VMs attached to it
+// and the Host operating system. Attaching an internal port means the OS can manage
+// the IP settings of the switch.
+// Calling SetExternalPort() will attach an physical or virtual net adapter to the
+// VM switch. This will allow trafic to flow through that interface, making it an
+// external VM switch.
+// If both SetInternalPort() and SetExternalPort() are called, the switch becomes an
+// external VM switch with management OS, inheriting the IP settings of the external
+// net adapter attached to the switch.
 func (m *Manager) CreateVMSwitch(name string) (VirtualSwitch, error) {
 	data, err := m.con.Get(VMSwitchSettings)
 	if err != nil {
