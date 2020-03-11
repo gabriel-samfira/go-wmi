@@ -478,6 +478,21 @@ func (v VirtualSwitch) removeSwitchResources(resources []string) error {
 	return nil
 }
 
+func (v VirtualSwitch) modifySwitchSettings(settings string) error {
+	jobPath := ole.VARIANT{}
+	jobState, err := v.mgr.svc.Get("ModifySystemSettings", settings, &jobPath)
+	if err != nil {
+		return errors.Wrap(err, "ModifySystemSettings")
+	}
+	if jobState.Value().(int32) == wmi.JobStatusStarted {
+		err := wmi.WaitForJob(jobPath.Value().(string))
+		if err != nil {
+			return errors.Wrap(err, "WaitForJob")
+		}
+	}
+	return nil
+}
+
 // SetExternalPort will attach an external ethernet port to this switch.
 // This operation will make this VMswitch an "external" VM switch.
 func (v VirtualSwitch) SetExternalPort(interfaceID string) error {
@@ -592,7 +607,11 @@ func (v VirtualSwitch) SetInternalPort() error {
 	resources := []string{
 		internalPortText,
 	}
-	return v.setSwitchResources(resources)
+	err = v.setSwitchResources(resources)
+	if err != nil {
+		return errors.Wrap(err, "setSwitchResources")
+	}
+	return nil
 }
 
 // ClearInternalPort will remove the internal port from this switch, disabling
@@ -631,16 +650,57 @@ func (v VirtualSwitch) Name() (string, error) {
 // ID returns the ID of the switch
 func (v VirtualSwitch) ID() (string, error) {
 	id, err := v.virtualSwitch.GetProperty("Name")
-	fmt.Println(id.Value(), err)
 	if err != nil {
 		return "", errors.Wrap(err, "GetProperty(Name)")
 	}
 	return id.Value().(string), nil
 }
 
+func (v VirtualSwitch) setInternalPortName(switchName string) error {
+	internalPortPath, err := v.getSwitchInternalPort()
+	if err != nil {
+		if err == wmi.ErrNotFound {
+			// This switch does not have an internal port assigned.
+			// That's fine.
+			return nil
+		}
+		return errors.Wrap(err, "getSwitchInternalPort")
+	}
+	loc, err := wmi.NewLocation(internalPortPath)
+	if err != nil {
+		return errors.Wrap(err, "NewLocation")
+	}
+
+	res, err := loc.GetResult()
+	if err != nil {
+		return errors.Wrap(err, "GetResult")
+	}
+
+	if err := res.Set("ElementName", switchName); err != nil {
+		return errors.Wrap(err, "Set(ElementName)")
+	}
+
+	portText, err := res.GetText(1)
+	if err != nil {
+		return errors.Wrap(err, "GetText")
+	}
+
+	jobPath := ole.VARIANT{}
+	resultingSystem := ole.VARIANT{}
+	jobState, err := v.mgr.svc.Get("ModifyResourceSettings", []string{portText}, &resultingSystem, &jobPath)
+	if err != nil {
+		return errors.Wrap(err, "ModifyResourceSettings")
+	}
+	if jobState.Value().(int32) == wmi.JobStatusStarted {
+		err := wmi.WaitForJob(jobPath.Value().(string))
+		if err != nil {
+			return errors.Wrap(err, "WaitForJob")
+		}
+	}
+	return nil
+}
+
 // SetName renames the switch.
-// Note: this will not change the name of the internal port, which means
-// that you will still see the old name when you run Get-NetAdapter or ipconfig
 func (v VirtualSwitch) SetName(newName string) error {
 	// Get fresh settings info
 	switchSettingsResult, err := v.virtualSwitch.Get("associators_", nil, VMSwitchSettings)
@@ -661,17 +721,12 @@ func (v VirtualSwitch) SetName(newName string) error {
 	if err != nil {
 		return errors.Wrap(err, "GetText")
 	}
-	jobPath := ole.VARIANT{}
-	jobState, err := v.mgr.svc.Get("ModifySystemSettings", text, &jobPath)
-	if err != nil {
-		return errors.Wrap(err, "ModifySystemSettings")
+	if err := v.modifySwitchSettings(text); err != nil {
+		return errors.Wrap(err, "modifySwitchSettings")
 	}
 
-	if jobState.Value().(int32) == wmi.JobStatusStarted {
-		err := wmi.WaitForJob(jobPath.Value().(string))
-		if err != nil {
-			return errors.Wrap(err, "WaitForJob")
-		}
+	if err := v.setInternalPortName(newName); err != nil {
+		return errors.Wrap(err, "setInternalPortName")
 	}
 	return nil
 }

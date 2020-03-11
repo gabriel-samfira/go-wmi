@@ -27,34 +27,37 @@ func main() {
 
 	defer vmsw.Release()
 
+	fmt.Printf("Creating VM switch %s\n", *switchName)
 	vs, err := vmsw.CreateVMSwitch(*switchName)
 	errExit(err)
 
-	name, err := vs.Name()
+	id, err := vs.ID()
 	errExit(err)
-	fmt.Println(name)
+	fmt.Printf("Switch ID is %s\n", id)
 
 	if *adapterGUID != "" {
+		fmt.Println("Assigning external port")
 		err = vs.SetExternalPort(*adapterGUID)
 		errExit(err)
 	}
 
 	if *mgmtOS == true {
+		fmt.Println("Assigning internal port")
 		err = vs.SetInternalPort()
 		errExit(err)
 	}
+	fmt.Println("Removing external port")
+	removed, err := vs.ClearExternalPort()
+	errExit(err)
+	fmt.Printf("Removed external port: %v\n", removed)
 
-	// removed, err := vs.ClearExternalPort()
-	// errExit(err)
-	// fmt.Println(removed)
+	fmt.Println("Removing internal port")
+	removed, err = vs.ClearInternalPort()
+	errExit(err)
+	fmt.Printf("Removed internal port: %v\n", removed)
 
-	// removed, err = vs.ClearInternalPort()
-	// errExit(err)
-	// fmt.Println(removed)
-
-	// id, err := vs.ID()
-	// errExit(err)
-	// err = vmsw.RemoveVMSwitch(id)
-	// errExit(err)
+	fmt.Printf("Removing vmswitch with ID %s\n", id)
+	err = vmsw.RemoveVMSwitch(id)
+	errExit(err)
 	return
 }

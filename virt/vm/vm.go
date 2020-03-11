@@ -209,7 +209,7 @@ func (m *Manager) CreateVM(name string, memoryMB int64, cpus int, limitCPUFeatur
 		return nil, errors.Wrap(err, "setting memory limit")
 	}
 
-	if err := vm.SetNumCPUs(cpus); err != nil {
+	if err := vm.SetCPUs(cpus, limitCPUFeatures); err != nil {
 		return nil, errors.Wrap(err, "setting CPU limit")
 	}
 
@@ -338,8 +338,8 @@ func (v *VirtualMachine) SetMemory(memoryMB int64) error {
 	return v.modifyResourceSettings([]string{memText})
 }
 
-// SetNumCPUs sets the number of CPU cores on the VM
-func (v *VirtualMachine) SetNumCPUs(cpus int) error {
+// SetCPUs sets the number of CPU cores on the VM
+func (v *VirtualMachine) SetCPUs(cpus int, limitCPUFeatures bool) error {
 	hostCpus := runtime.NumCPU()
 	if hostCpus < cpus {
 		return fmt.Errorf("Number of cpus exceeded available host resources")
@@ -363,8 +363,13 @@ func (v *VirtualMachine) SetNumCPUs(cpus int) error {
 		return errors.Wrap(err, "Reservation")
 	}
 
+	// Use 100% of CPU core
 	if err := procSettings.Set("Limit", 100000); err != nil {
 		return errors.Wrap(err, "Limit")
+	}
+
+	if err := procSettings.Set("LimitProcessorFeatures", limitCPUFeatures); err != nil {
+		return errors.Wrap(err, "LimitProcessorFeatures")
 	}
 
 	procText, err := procSettings.GetText(1)
